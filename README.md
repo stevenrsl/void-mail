@@ -1,6 +1,6 @@
 # Void Mail
 
-**Un courrier qui s'efface derrière le message.** Version **0.0.3** (préversion : lire). Void Mail est le troisième compagnon de Void et de [Void Notes](../Void%20Notes) : même palette, même chrome sombre, mêmes réglages d'apparence, rien de superflu à l'écran. Le projet et ses choix sont décrits dans [CONCEPT.md](CONCEPT.md).
+**Un courrier qui s'efface derrière le message.** Version **0.0.4** (préversion : lire et trier). Void Mail est le troisième compagnon de Void et de [Void Notes](../Void%20Notes) : même palette, même chrome sombre, mêmes réglages d'apparence, rien de superflu à l'écran. Le projet et ses choix sont décrits dans [CONCEPT.md](CONCEPT.md).
 
 - Swift + SwiftUI, AppKit là où c'est utile (fenêtre, barre de titre)
 - Mac : Apple silicon, macOS 14 minimum. iPhone : plus tard, sur `Shared/`
@@ -10,6 +10,8 @@
 ![Void Mail, thème sombre (comptes de démonstration)](docs/screenshots/sombre.png)
 
 ![Un message HTML, son pixel espion bloqué](docs/screenshots/html-protege.png)
+
+![Un message archivé, le temps de l'annuler](docs/screenshots/geste-archive.png)
 
 | | |
 |---|---|
@@ -85,6 +87,22 @@ Réglages → Apparence : thème, couleur d'accent et teinte de la fenêtre, **l
 - **Cache** : `mail.sqlite` à côté de `accounts.json` : enveloppes des boîtes visitées, messages ouverts, index de recherche. Le serveur reste la vérité : si la boîte est renumérotée (UIDVALIDITY), ce que le cache en savait est oublié. Retirer un compte retire aussi son cache.
 - **Décodage** : MIME complet (parties imbriquées, quoted-printable, base64, jeux de caractères, mots encodés RFC 2047, noms de fichier RFC 2231), réponses IMAP lues en octets bruts, littéraux compris.
 
+## Trier
+
+Un geste par message, au clavier dans la liste ou par les boutons au bout de la ligne de l'objet (comme ceux d'une note) :
+
+| Geste | Clavier | Ce qui se passe |
+|---|---|---|
+| Archiver | E (⇧⌘E) | vers la boîte Archives ; depuis les Archives, retour en Réception |
+| Mettre à la corbeille | ⌫ (⌘⌫) | vers la Corbeille ; depuis la Corbeille, suppression définitive après confirmation |
+| Épingler en tête | ⌃⌘P | drapeau `\Flagged` du serveur : le message passe en tête de sa boîte, suivi d'une épingle |
+| Lu / non lu | U (⇧⌘U) | |
+
+- **Annuler** : le message quitte la liste aussitôt, le suivant s'ouvre, les compteurs suivent ; « Archivé · Annuler » reste **5 secondes** en bas de la liste (⌘Z aussi). Le geste ne part au serveur qu'ensuite — ou tout de suite si un autre geste suit, ou si l'on quitte l'app. Refusé par le serveur, le message revient à sa place et l'erreur le dit.
+- **Sur le serveur** : `UID MOVE` (RFC 6851) quand il le connaît, sinon copie, `\Deleted` et `UID EXPUNGE` (seulement ces messages, avec UIDPLUS).
+- **Nouveaux messages en direct** : une seconde connexion par compte attend en **IDLE** sur la Réception (relancée toutes les 24 minutes, sous la limite des serveurs) ; ce qui y arrive ou en part met la liste et les compteurs à jour sans ⌘R. Sans IDLE sur le serveur, la Réception est relue toutes les 5 minutes. Après une coupure (veille, réseau), la connexion revient d'elle-même, en espaçant ses essais.
+- ⌘Z sert à annuler un geste : le menu Édition n'a plus son « Annuler » pour le texte des champs (la recherche, la feuille d'ajout de compte).
+
 ## État (honnête)
 
 ✅ terminé et vérifié par l'auto-test · ☑️ terminé, vérifié à la compilation et sur capture, pas par un test automatisé · 🟡 partiel · ❌ pas encore.
@@ -102,8 +120,9 @@ Réglages → Apparence : thème, couleur d'accent et teinte de la fenêtre, **l
 - ☑️ Liste des messages, message texte et HTML, bandeau des images, pièces jointes (captures ci-dessus, comptes de démonstration)
 - ☑️ **Relève sur un vrai compte** : vérifiée à la main sur le compte Proton (Réception, dossiers imbriqués)
 - 🟡 **OAuth Microsoft** : écrit, jamais exécuté de bout en bout (pas d'identifiant Azure, pas de compte Outlook)
-- ❌ `IDLE` (les nouveaux messages arrivent à ⌘R ou au retour dans l'app), messages plus anciens que les 300 derniers
-- ❌ Lecture épurée, archiver / supprimer, épingler
+- ☑️ Archiver, corbeille, épingler, annuler (captures en démonstration) ; 🟡 pas encore essayés sur un vrai compte
+- 🟡 IDLE : écrit, pas encore observé sur un vrai compte
+- ❌ Messages plus anciens que les 300 derniers, lecture épurée, gestes sur plusieurs messages à la fois
 - ❌ Compositeur (éditeur de Void Notes), envoi, envoi différé
 - ❌ Ponts avec Void et Void Notes, `mailto:` (déclaré dans `Config/Info.plist`, pas encore traité)
 - ❌ iPhone
@@ -114,9 +133,9 @@ Réglages → Apparence : thème, couleur d'accent et teinte de la fenêtre, **l
 "build/DerivedData/Build/Products/Debug/Void Mail.app/Contents/MacOS/Void Mail" -selfTest YES
 ```
 
-90 vérifications avec `-network YES` (86 sans). Le code de sortie est le nombre d'échecs. Le test ne touche ni aux vrais comptes, ni aux préférences, ni au trousseau.
+93 vérifications avec `-network YES` (89 sans). Le code de sortie est le nombre d'échecs. Le test ne touche ni aux vrais comptes, ni aux préférences, ni au trousseau.
 
-Autres arguments (builds Debug) : `-demo YES` (deux comptes de démonstration et leur Réception ; `-openUID 101` ou `103` ouvre un message texte ou HTML), `-addAccount YES -address <adresse>` (la feuille ouverte), `-theme light -accent pink -tint peach` (l'apparence), `-snapshot YES` (une capture de la fenêtre, ou de la feuille ouverte, en PNG base64 sur la sortie standard, la seule sortie que le bac à sable laisse lire) :
+Autres arguments (builds Debug) : `-demo YES` (deux comptes de démonstration et leur Réception ; `-openUID 101` ou `103` ouvre un message texte ou HTML, `-gesture archive`, `trash` ou `pin` y applique un geste), `-addAccount YES -address <adresse>` (la feuille ouverte), `-theme light -accent pink -tint peach` (l'apparence), `-snapshot YES` (une capture de la fenêtre, ou de la feuille ouverte, en PNG base64 sur la sortie standard, la seule sortie que le bac à sable laisse lire) :
 
 ```bash
 "build/DerivedData/Build/Products/Debug/Void Mail.app/Contents/MacOS/Void Mail" -demo YES -snapshot YES | sed -n 's/^SNAPSHOT://p' | base64 -d > fenetre.png

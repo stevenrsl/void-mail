@@ -152,6 +152,84 @@ final class IMAPClient {
         return Int(text[range.upperBound...].prefix { $0.isNumber })
     }
 
+    /// Moves messages to another mailbox: MOVE where the server has it (RFC 6851), else a copy,
+    /// then the originals marked deleted and expunged — only those (UIDPLUS) when it can.
+    func move(uids: [Int], to destination: String) async throws {
+        guard !uids.isEmpty else { return }
+        let set = Self.uidSet(uids)
+        let target = Self.quoted(ModifiedUTF7.encode(destination))
+        if capabilities.contains("MOVE") {
+            try await command("UID MOVE \(set) \(target)")
+        } else {
+            try await command("UID COPY \(set) \(target)")
+            try await expunge(set)
+        }
+    }
+
+    /// Deletes messages for good (from the trash).
+    func delete(uids: [Int]) async throws {
+        guard !uids.isEmpty else { return }
+        try await expunge(Self.uidSet(uids))
+    }
+
+    private func expunge(_ set: String) async throws {
+        try await command("UID STORE \(set) +FLAGS.SILENT (\\Deleted)")
+        try await command(capabilities.contains("UIDPLUS") ? "UID EXPUNGE \(set)" : "EXPUNGE")
+    }
+
+    /// `[3, 4, 5, 9]` → `3:5,9`.
+    static func uidSet(_ uids: [Int]) -> String {
+        var ranges: [String] = []
+        var start: Int?, previous: Int?
+        for uid in Set(uids).sorted() {
+            if let last = previous, uid == last + 1 { previous = uid; continue }
+            if let start, let previous { ranges.append(start == previous ? "\(start)" : "\(start):\(previous)") }
+            start = uid
+            previous = uid
+        }
+        if let start, let previous { ranges.append(start == previous ? "\(start)" : "\(start):\(previous)") }
+        return ranges.joined(separator: ",")
+    }
+
+    var supportsIdle: Bool { capabilities.contains("IDLE") }
+
+    /// Waits, in IDLE (RFC 2177), until the open mailbox changes or `limit` has passed (servers
+    /// drop an IDLE after 30 minutes: under that, it is ended and started again). True if it changed.
+    func idle(limit: Duration = .seconds(24 * 60)) async throws -> Bool {
+        tag += 1
+        let label = "v\(tag)"
+        try await stream.send("\(label) IDLE")
+        let continuation = try await stream.readLine()
+        guard continuation.hasPrefix("+") else { throw MailError.unexpected(continuation) }
+        stream.readTimeout = 31 * 60
+        defer { stream.readTimeout = 20 }
+        let stream = self.stream
+        // DONE once only, from whichever comes first: the limit, or a change.
+        let done = OnceFlag()
+        // At the limit, DONE is sent while the read below waits: the server then ends the IDLE.
+        let timer = Task {
+            try await Task.sleep(for: limit)
+            if done.claim() { try await stream.sendQuietly("DONE") }
+        }
+        var changed = false
+        while true {
+            let line = try await stream.readLine()
+            if line.hasPrefix(label + " ") {
+                timer.cancel()
+                guard line.dropFirst(label.count + 1).uppercased().hasPrefix("OK") else { throw MailError.unexpected(line) }
+                return changed
+            }
+            let words = line.uppercased().split(separator: " ")
+            if words.count >= 3, ["EXISTS", "EXPUNGE", "FETCH", "RECENT"].contains(words[2]) {
+                changed = true
+                if done.claim() {
+                    timer.cancel()
+                    try await stream.sendQuietly("DONE")
+                }
+            }
+        }
+    }
+
     func logout() async {
         _ = try? await command("LOGOUT")
         stream.close()
@@ -304,5 +382,19 @@ enum ModifiedUTF7 {
         }
         flush()
         return result
+    }
+}
+
+/// True the first time only, from any thread.
+final class OnceFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var claimed = false
+
+    func claim() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        if claimed { return false }
+        claimed = true
+        return true
     }
 }

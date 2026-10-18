@@ -56,6 +56,20 @@ actor AccountSession {
         }
     }
 
+    func move(uids: [Int], from mailbox: String, to destination: String) async throws {
+        try await withConnection { client in
+            _ = try await self.open(mailbox, client)
+            try await client.move(uids: uids, to: destination)
+        }
+    }
+
+    func delete(uids: [Int], from mailbox: String) async throws {
+        try await withConnection { client in
+            _ = try await self.open(mailbox, client)
+            try await client.delete(uids: uids)
+        }
+    }
+
     /// The counts of the mailboxes that can be opened, one STATUS each; a mailbox that refuses
     /// is left out.
     func counts(_ paths: [String]) async throws -> [String: IMAPClient.Count] {
@@ -106,5 +120,55 @@ actor AccountSession {
         try await client.authenticate(user: account.username, credential: credential)
         self.client = client
         return client
+    }
+}
+
+/// A second connection per account, that does nothing but wait in IDLE on the Inbox and say
+/// when something changed there. Without IDLE on the server, it asks again every five minutes.
+/// After an error (sleep, network gone), it tries again later, waiting longer each time.
+actor InboxWatcher {
+    let account: MailAccount
+    private let onChange: @Sendable () async -> Void
+    private var task: Task<Void, Never>?
+
+    init(account: MailAccount, onChange: @escaping @Sendable () async -> Void) {
+        self.account = account
+        self.onChange = onChange
+    }
+
+    func start() {
+        guard task == nil else { return }
+        task = Task { await self.run() }
+    }
+
+    func stop() {
+        task?.cancel()
+        task = nil
+    }
+
+    private func run() async {
+        var pause: Duration = .seconds(30)
+        while !Task.isCancelled {
+            do {
+                let credential = try await SASL.credential(for: account)
+                let client = try await IMAPClient.connect(to: account.imap)
+                try await client.authenticate(user: account.username, credential: credential)
+                _ = try await client.select("INBOX")
+                pause = .seconds(30)
+                while !Task.isCancelled {
+                    if client.supportsIdle {
+                        if try await client.idle() { await onChange() }
+                    } else {
+                        try await Task.sleep(for: .seconds(5 * 60))
+                        await onChange()
+                    }
+                }
+                await client.logout()
+            } catch {
+                if Task.isCancelled { return }
+                try? await Task.sleep(for: pause)
+                pause = min(pause * 2, .seconds(10 * 60))
+            }
+        }
     }
 }

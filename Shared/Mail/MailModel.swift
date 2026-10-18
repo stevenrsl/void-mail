@@ -34,6 +34,31 @@ final class MailModel {
     private let cache = MailCache.shared
     @ObservationIgnored private var sessions: [UUID: AccountSession] = [:]
     @ObservationIgnored private var openTask: Task<Void, Never>?
+    @ObservationIgnored private var watchers: [UUID: InboxWatcher] = [:]
+
+    /// A gesture (archive, trash) shown done but not yet sent to the server, the time to undo it.
+    struct PendingGesture: Identifiable {
+        enum Kind: Equatable {
+            case move(to: String)
+            case delete
+        }
+
+        let id = UUID()
+        let kind: Kind
+        let messages: [MessageSummary]
+        /// « Archivé », « Mis à la corbeille »…
+        let label: String
+        /// The counts before, put back if it is undone.
+        let countsBefore: [String: IMAPClient.Count]
+    }
+
+    private(set) var pending: PendingGesture?
+    /// A message of the trash, waiting for « Supprimer définitivement ».
+    var confirmingDeletion: MessageSummary?
+    /// Messages moved away whose move hasn't reached the server yet: out of the list meanwhile.
+    @ObservationIgnored private var hidden: Set<Int64> = []
+    @ObservationIgnored private var pendingTimer: Task<Void, Never>?
+    static let undoDelay: Duration = .seconds(5)
 
     var currentAccount: MailAccount? {
         store.account(settings.currentAccount.flatMap(UUID.init)) ?? store.accounts.first
@@ -89,6 +114,9 @@ final class MailModel {
 
     /// The counts of every mailbox of the account, after its open mailbox is up to date.
     private func refreshCounts(_ account: MailAccount) async {
+        #if DEBUG
+        if DebugLaunch.isRequested { return }
+        #endif
         let paths = account.mailboxes.filter(\.isSelectable).map(\.path)
         guard let counts = try? await session(for: account).counts(paths), currentAccount?.id == account.id else { return }
         self.counts = counts
@@ -99,9 +127,9 @@ final class MailModel {
         let query = self.query.trimmingCharacters(in: .whitespaces)
         if query.isEmpty {
             guard let mailbox = selectedMailbox else { messages = []; return }
-            messages = await cache.messages(account: account.id, mailbox: mailbox)
+            messages = await cache.messages(account: account.id, mailbox: mailbox).filter { !hidden.contains($0.id) }
         } else {
-            messages = await cache.search(account: account.id, text: query)
+            messages = await cache.search(account: account.id, text: query).filter { !hidden.contains($0.id) }
         }
     }
 
@@ -119,6 +147,10 @@ final class MailModel {
             guard let account = store.account(summary.account) else { return }
             do {
                 var raw = await cache.body(message: summary.id)
+                #if DEBUG
+                // Demo messages without a body stay blank: there is no server to ask.
+                if raw == nil, DebugLaunch.isRequested { return }
+                #endif
                 if raw == nil {
                     raw = try await session(for: account).body(uid: summary.uid, mailbox: summary.mailbox)
                 }
@@ -167,6 +199,8 @@ final class MailModel {
         }
         Task {
             await cache.setFlag(flag, on: on, message: summary.id)
+            // A pinned message goes to the top of the list, an unpinned one back to its date.
+            if flag == "\\Flagged" { await reloadList() }
             #if DEBUG
             if DebugLaunch.isRequested { return }
             #endif
@@ -181,6 +215,165 @@ final class MailModel {
         }
     }
 
+    func togglePinned() {
+        guard let message = selectedMessage else { return }
+        setFlag("\\Flagged", on: !message.isFlagged, for: message)
+    }
+
+    // MARK: Gestures
+
+    func archivePath(of account: MailAccount) -> String? { account.mailboxes.first { $0.role == .archive }?.path }
+    func trashPath(of account: MailAccount) -> String? { account.mailboxes.first { $0.role == .trash }?.path }
+
+    /// E: to the Archives; from the Archives, back to the Inbox.
+    func archiveSelected() {
+        guard let message = selectedMessage, let account = store.account(message.account) else { return }
+        guard let archive = archivePath(of: account) else { serverError = "Ce compte n'a pas de boîte Archives."; return }
+        if message.mailbox == archive {
+            perform(.move(to: "INBOX"), on: message, label: "Remis en Réception")
+        } else {
+            perform(.move(to: archive), on: message, label: "Archivé")
+        }
+    }
+
+    /// ⌫: to the trash; in the trash (or without one), deleted for good after confirmation.
+    func trashSelected() {
+        guard let message = selectedMessage, let account = store.account(message.account) else { return }
+        if let trash = trashPath(of: account), message.mailbox != trash {
+            perform(.move(to: trash), on: message, label: "Mis à la corbeille")
+        } else {
+            confirmingDeletion = message
+        }
+    }
+
+    func deleteForGood(_ message: MessageSummary) {
+        confirmingDeletion = nil
+        perform(.delete, on: message, label: "Supprimé", undoable: false)
+    }
+
+    /// Done at once in the window — the message leaves the list, the next one opens — and sent
+    /// to the server a few seconds later, unless undone meanwhile.
+    private func perform(_ kind: PendingGesture.Kind, on message: MessageSummary, label: String, undoable: Bool = true) {
+        commitPending()
+        let index = messages.firstIndex { $0.id == message.id }
+        let next = index.flatMap { $0 + 1 < messages.count ? messages[$0 + 1] : ($0 > 0 ? messages[$0 - 1] : nil) }
+        let gesture = PendingGesture(kind: kind, messages: [message], label: label, countsBefore: counts)
+        hidden.insert(message.id)
+        messages.removeAll { $0.id == message.id }
+        adjustCounts(for: message, kind: kind)
+        if let next { open(next) } else { closeMessage() }
+        if undoable {
+            pending = gesture
+            pendingTimer = Task {
+                try? await Task.sleep(for: Self.undoDelay)
+                guard !Task.isCancelled else { return }
+                await commit(gesture)
+            }
+        } else {
+            Task { await commit(gesture) }
+        }
+    }
+
+    private func adjustCounts(for message: MessageSummary, kind: PendingGesture.Kind) {
+        let unseen = message.isSeen ? 0 : 1
+        if var count = counts[message.mailbox] {
+            count.messages = max(0, count.messages - 1)
+            count.unseen = max(0, count.unseen - unseen)
+            counts[message.mailbox] = count
+        }
+        if case .move(let destination) = kind, var count = counts[destination] {
+            count.messages += 1
+            count.unseen += unseen
+            counts[destination] = count
+        }
+    }
+
+    /// ⌘Z, or « Annuler » in the band: the message comes back, open.
+    func undo() {
+        guard let gesture = pending else { return }
+        pendingTimer?.cancel()
+        pending = nil
+        counts = gesture.countsBefore
+        for message in gesture.messages { hidden.remove(message.id) }
+        Task {
+            await reloadList()
+            if let first = gesture.messages.first, let restored = messages.first(where: { $0.id == first.id }) { open(restored) }
+        }
+    }
+
+    /// The gesture waiting goes now (another gesture, a quit).
+    func commitPending() {
+        guard let gesture = pending else { return }
+        pendingTimer?.cancel()
+        pending = nil
+        Task { await commit(gesture) }
+    }
+
+    func commitPendingNow() async {
+        guard let gesture = pending else { return }
+        pendingTimer?.cancel()
+        pending = nil
+        await commit(gesture)
+    }
+
+    private func commit(_ gesture: PendingGesture) async {
+        if pending?.id == gesture.id { pending = nil }
+        guard let first = gesture.messages.first, let account = store.account(first.account) else { return }
+        let uids = gesture.messages.map(\.uid)
+        let ids = Set(gesture.messages.map(\.id))
+        do {
+            #if DEBUG
+            let offline = DebugLaunch.isRequested
+            #else
+            let offline = false
+            #endif
+            if !offline {
+                switch gesture.kind {
+                case .move(let destination): try await session(for: account).move(uids: uids, from: first.mailbox, to: destination)
+                case .delete: try await session(for: account).delete(uids: uids, from: first.mailbox)
+                }
+            }
+            await cache.removeMessages(account: account.id, mailbox: first.mailbox, uids: Set(uids))
+            hidden.subtract(ids)
+        } catch {
+            // Refused: the message comes back where it was.
+            hidden.subtract(ids)
+            serverError = "« \(gesture.label) » n'a pas abouti : \(Self.describe(error))"
+            await reloadList()
+        }
+        await refreshCounts(account)
+    }
+
+    // MARK: New mail
+
+    /// One watcher per account on its Inbox (IDLE); started at launch and when accounts change.
+    func watchInboxes() {
+        #if DEBUG
+        if DebugLaunch.isRequested { return }
+        #endif
+        let accounts = store.accounts
+        for (id, watcher) in watchers where accounts.first(where: { $0.id == id }) != watcher.account {
+            Task { await watcher.stop() }
+            watchers[id] = nil
+        }
+        for account in accounts where watchers[account.id] == nil {
+            let id = account.id
+            let watcher = InboxWatcher(account: account) { await MailModel.shared.inboxChanged(id) }
+            watchers[id] = watcher
+            Task { await watcher.start() }
+        }
+    }
+
+    /// Something changed in an account's Inbox: the list if it is the one shown, the counts anyway.
+    func inboxChanged(_ id: UUID) async {
+        guard let account = currentAccount, account.id == id else { return }
+        if selectedMailbox == "INBOX", query.isEmpty {
+            await refresh()
+        } else {
+            await refreshCounts(account)
+        }
+    }
+
     // MARK: Accounts
 
     func forget(_ account: MailAccount) {
@@ -190,6 +383,7 @@ final class MailModel {
             await cache.removeAccount(account.id)
         }
         store.remove(account)
+        watchInboxes()
         if settings.currentAccount == account.id.uuidString { settings.currentAccount = nil }
         closeMessage()
         Task { await refresh() }
@@ -223,6 +417,13 @@ final class MailModel {
         // `-openUID 103`: that message open.
         let uid = UserDefaults.standard.integer(forKey: "openUID")
         if let message = messages.first(where: { $0.uid == uid }) { open(message) }
+        // `-gesture archive` (or `trash`, `pin`): that gesture on the open message, for the snapshots.
+        switch UserDefaults.standard.string(forKey: "gesture") {
+        case "archive": archiveSelected()
+        case "trash": trashSelected()
+        case "pin": togglePinned()
+        default: break
+        }
     }
     #endif
 }

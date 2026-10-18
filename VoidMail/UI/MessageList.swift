@@ -49,14 +49,18 @@ struct MessageList: View {
         .focused($focused)
         .onKeyPress(.downArrow) { model.move(by: 1); return .handled }
         .onKeyPress(.upArrow) { model.move(by: -1); return .handled }
-        .onKeyPress(characters: CharacterSet(charactersIn: "jkuJKU")) { press in
+        .onKeyPress(characters: CharacterSet(charactersIn: "jkueJKUE")) { press in
             switch press.characters.lowercased() {
             case "j": model.move(by: 1)
             case "k": model.move(by: -1)
+            case "e": model.archiveSelected()
             default: model.toggleSeen()
             }
             return .handled
         }
+        .onKeyPress(.delete) { model.trashSelected(); return .handled }
+        .onKeyPress(.deleteForward) { model.trashSelected(); return .handled }
+        .overlay(alignment: .bottom) { UndoBand() }
     }
 
     private var header: some View {
@@ -101,6 +105,33 @@ struct MessageList: View {
             Text(model.query.isEmpty ? "Aucun message" : "Rien trouvé")
                 .font(.system(size: 12))
                 .foregroundStyle(Theme.secondaryText)
+        }
+    }
+}
+
+/// « Archivé · Annuler », a few seconds at the bottom of the list: the gesture reaches the
+/// server only once it has gone.
+private struct UndoBand: View {
+    @Environment(MailModel.self) private var model
+
+    var body: some View {
+        if let gesture = model.pending {
+            HStack(spacing: 10) {
+                Text(gesture.label).font(.system(size: 12))
+                Button("Annuler") { withAnimation(Theme.quick) { model.undo() } }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.accent)
+                    .help("⌘Z")
+            }
+            .foregroundStyle(Theme.primaryText)
+            .padding(.horizontal, 14)
+            .frame(height: 32)
+            .background(Capsule().fill(Theme.surface).shadow(color: Theme.shadow.opacity(0.25), radius: 8, y: 2))
+            .overlay(Capsule().strokeBorder(Theme.stroke))
+            .padding(.bottom, 14)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+            .id(gesture.id)
         }
     }
 }

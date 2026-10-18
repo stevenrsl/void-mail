@@ -8,6 +8,8 @@ final class MailStream {
     private let task: URLSessionStreamTask
     private var buffer = Data()
     private let timeout: TimeInterval
+    /// How long a read waits: longer while IDLE waits for the server to speak.
+    var readTimeout: TimeInterval
     private(set) var isSecure = false
     /// What was said, for the account's check (passwords and tokens never: see `send(_:secret:)`).
     private(set) var transcript: [String] = []
@@ -16,6 +18,7 @@ final class MailStream {
         guard endpoint.isAllowed else { throw MailError.insecure }
         guard !endpoint.host.isEmpty, (1...65535).contains(endpoint.port) else { throw MailError.badServer }
         self.timeout = timeout
+        readTimeout = timeout
         task = LocalBridgeTrust.session.streamTask(withHostName: endpoint.host, port: endpoint.port)
         task.resume()
         if endpoint.security == .tls { startTLS() }
@@ -76,10 +79,19 @@ final class MailStream {
         }
     }
 
+    /// Writes a line without logging it: what ends IDLE, sent while a read waits.
+    func sendQuietly(_ line: String) async throws {
+        do {
+            try await task.write(Data((line + "\r\n").utf8), timeout: timeout)
+        } catch {
+            throw MailError.connection(error)
+        }
+    }
+
     private func fill() async throws {
         let data: Data?, atEOF: Bool
         do {
-            (data, atEOF) = try await task.readData(ofMinLength: 1, maxLength: 64 * 1024, timeout: timeout)
+            (data, atEOF) = try await task.readData(ofMinLength: 1, maxLength: 64 * 1024, timeout: readTimeout)
         } catch {
             throw MailError.connection(error)
         }

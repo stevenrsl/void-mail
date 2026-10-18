@@ -13,10 +13,14 @@ struct MessageView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 6) {
-                Text(summary.subject.isEmpty ? "(sans objet)" : summary.subject)
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(Theme.primaryText)
-                    .textSelection(.enabled)
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    Text(summary.subject.isEmpty ? "(sans objet)" : summary.subject)
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(Theme.primaryText)
+                        .textSelection(.enabled)
+                    Spacer(minLength: 0)
+                    MessageActions(summary: summary)
+                }
                 Text("De \(sender) · \(MailDate.sentence(summary.date))")
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(Theme.secondaryText)
@@ -108,6 +112,26 @@ struct MessageView: View {
             result[lower..<upper].underlineStyle = .single
         }
         return result
+    }
+}
+
+/// At the end of the subject line, as the buttons by a note's title: pin, unread, archive, trash.
+private struct MessageActions: View {
+    let summary: MessageSummary
+    @Environment(MailModel.self) private var model
+    @Environment(AccountStore.self) private var store
+
+    var body: some View {
+        let account = store.account(summary.account)
+        let inArchive = account.flatMap(model.archivePath(of:)) == summary.mailbox
+        let inTrash = account.flatMap(model.trashPath(of:)).map { $0 == summary.mailbox } ?? true
+        HStack(spacing: 2) {
+            ChromeButton(symbol: summary.isFlagged ? "pin.fill" : "pin", help: summary.isFlagged ? "Désépingler (⌃⌘P)" : "Épingler en tête (⌃⌘P)",
+                         active: summary.isFlagged) { model.togglePinned() }
+            ChromeButton(symbol: summary.isSeen ? "envelope.badge" : "envelope.open", help: summary.isSeen ? "Marquer comme non lu (U)" : "Marquer comme lu (U)") { model.toggleSeen() }
+            ChromeButton(symbol: inArchive ? "tray.and.arrow.down" : "archivebox", help: inArchive ? "Remettre en Réception (E)" : "Archiver (E)") { model.archiveSelected() }
+            ChromeButton(symbol: inTrash ? "trash.slash" : "trash", help: inTrash ? "Supprimer définitivement… (⌫)" : "Mettre à la corbeille (⌫)") { model.trashSelected() }
+        }
     }
 }
 

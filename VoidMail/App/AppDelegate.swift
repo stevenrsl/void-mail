@@ -30,5 +30,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #endif
     }
 
+    /// A gesture still waiting for its undo delay reaches the server before the app goes.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        MainActor.assumeIsolated {
+            guard MailModel.shared.pending != nil else { return .terminateNow }
+            Task { @MainActor in
+                await MailModel.shared.commitPendingNow()
+                NSApp.reply(toApplicationShouldTerminate: true)
+            }
+            return .terminateLater
+        }
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 }

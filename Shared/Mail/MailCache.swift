@@ -150,7 +150,8 @@ actor MailCache {
     }
 
     func messages(account: UUID, mailbox: String, limit: Int = 500) -> [MessageSummary] {
-        query("\(Self.summaryColumns) WHERE account = ? AND mailbox = ? ORDER BY date DESC LIMIT ?", [account.uuidString, mailbox, limit], Self.summary)
+        // Pinned messages first.
+        query("\(Self.summaryColumns) WHERE account = ? AND mailbox = ? ORDER BY instr(flags, '\\Flagged') > 0 DESC, date DESC LIMIT ?", [account.uuidString, mailbox, limit], Self.summary)
     }
 
     /// Every word typed, as the start of a word, accents ignored; the most recent first.

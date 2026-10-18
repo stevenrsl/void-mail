@@ -94,6 +94,8 @@ enum SelfTest {
         check(IMAPClient.parseStatus(IMAPLine("* STATUS \"Folders/Factures\" (MESSAGES 231 UNSEEN 12)")) == .init(messages: 231, unseen: 12), "STATUS : messages et non lus")
         check(IMAPClient.parseStatus(IMAPLine("* STATUS INBOX (UNSEEN 3 MESSAGES 9)")) == .init(messages: 9, unseen: 3), "STATUS : dans n'importe quel ordre")
         check(!MailboxSidebar.showsUnseen(Mailbox(path: "All Mail", delimiter: "/", attributes: ["\\All"])) && MailboxSidebar.showsUnseen(Mailbox(path: "INBOX", delimiter: "/", attributes: [])), "non lus montrés là où il y a quelque chose à faire")
+        check(IMAPClient.uidSet([9, 3, 4, 5, 12, 11]) == "3:5,9,11:12", "plages d'UID")
+        check(IMAPClient.uidSet([7]) == "7", "un seul UID")
         check(IMAPClient.code("UIDVALIDITY", in: "* OK [UIDVALIDITY 3857529045] UIDs valid") == 3857529045, "UIDVALIDITY")
     }
 
@@ -205,6 +207,9 @@ enum SelfTest {
         check(list.map(\.uid) == [3, 1] && list[1].isSeen, "drapeaux mis à jour, message disparu du serveur retiré")
         let removed = await cache.search(account: account, text: "facture")
         check(removed.isEmpty, "retiré aussi de la recherche")
+        await cache.setFlag("\\Flagged", on: true, message: list[1].id)
+        let pinned = await cache.messages(account: account, mailbox: "INBOX")
+        check(pinned.map(\.uid) == [1, 3] && pinned[0].isFlagged, "message épinglé en tête")
         await cache.checkValidity(account: account, mailbox: "INBOX", validity: 2)
         let renumbered = await cache.messages(account: account, mailbox: "INBOX")
         let forgottenBody = await cache.body(message: list[0].id)

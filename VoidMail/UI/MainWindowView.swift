@@ -53,10 +53,20 @@ struct MainWindowView: View {
             if DebugLaunch.isDemo { await model.loadDemo() }
             #endif
             await model.refresh()
+            model.watchInboxes()
         }
         // Back to the app: what came in meanwhile.
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             Task { await model.refresh() }
+        }
+        .confirmationDialog("Supprimer définitivement « \(model.confirmingDeletion?.subject ?? "") » ?",
+                            isPresented: Binding(get: { model.confirmingDeletion != nil }, set: { if !$0 { model.confirmingDeletion = nil } })) {
+            Button("Supprimer définitivement", role: .destructive) {
+                if let message = model.confirmingDeletion { withAnimation(Theme.quick) { model.deleteForGood(message) } }
+            }
+            Button("Annuler", role: .cancel) { model.confirmingDeletion = nil }
+        } message: {
+            Text("Le message est effacé du serveur. Cela ne s'annule pas.")
         }
         .alert("Opération impossible", isPresented: Binding(get: { store.errorMessage != nil }, set: { if !$0 { store.errorMessage = nil } })) {
             Button("OK") {}

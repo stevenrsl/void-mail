@@ -180,6 +180,7 @@ struct AccountSheet: View {
                 let checked = try await AccountCheck.run(candidate) { step = $0 }
                 store.save(checked)
                 model.select(checked)
+                model.watchInboxes()
                 dismiss()
             } catch {
                 // Nothing kept: the keychain item goes with the failed attempt.
