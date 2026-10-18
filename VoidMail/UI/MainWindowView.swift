@@ -48,9 +48,17 @@ struct MainWindowView: View {
                 outbox.reopen = nil
             }
         }
-        // mailto: links (Void, any app): a new message.
+        // mailto: links (Void, any app): a new message;
+        // and voidmail:// (a note's source, a note or a page to send).
         .onOpenURL { url in
-            if let id = outbox.draft(fromMailto: url, account: model.currentAccount) { openWindow(id: "compose", value: id) }
+            switch Bridges.request(from: url) {
+            case .message(let id):
+                Task { await model.reveal(messageID: id) }
+            case .compose(let to, let subject, let markdown):
+                if let id = outbox.draft(fromCompose: to, subject: subject, markdown: markdown, account: model.currentAccount) { openWindow(id: "compose", value: id) }
+            case nil:
+                if let id = outbox.draft(fromMailto: url, account: model.currentAccount) { openWindow(id: "compose", value: id) }
+            }
         }
         .alert("Envoi", isPresented: Binding(get: { outbox.sendError != nil }, set: { if !$0 { outbox.sendError = nil } })) {
             Button("OK") {}

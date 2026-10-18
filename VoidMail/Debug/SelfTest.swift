@@ -24,6 +24,7 @@ enum SelfTest {
         imapValues()
         mime()
         dates()
+        bridges()
         htmlPolicy()
         composing()
         Task {
@@ -156,6 +157,19 @@ enum SelfTest {
         check(!message.hasRemoteImages, "pas d'image distante")
         check(MailMessage(raw: Data("Content-Type: text/html\r\n\r\n<img src=\"https://t.test/p.gif\">".utf8)).hasRemoteImages, "pixel espion repéré")
         check(MailMessage(raw: Data("Subject: x\r\n\r\nCorps".utf8)).plainText == "Corps", "message sans Content-Type")
+    }
+
+    private static func bridges() {
+        print("Void et Void Notes")
+        let note = Bridges.noteURL(subject: "Sintra & Pena", text: "Le train\npart à 9 h", messageID: "<m2@exemple.fr>")
+        let items = note.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false)?.queryItems } ?? []
+        func item(_ name: String) -> String? { items.first { $0.name == name }?.value }
+        check(note?.scheme == "voidnotes" && note?.host() == "new" && item("title") == "Sintra & Pena" && item("text") == "Le train\npart à 9 h", "note pour Void Notes : titre et texte intacts")
+        check(item("url").flatMap(URL.init(string:)).flatMap(Bridges.request) == .message(id: "<m2@exemple.fr>"), "« Source : » de la note : rouvre ce message")
+        check(Bridges.noteURL(subject: "x", text: String(repeating: "a", count: 30_000), messageID: nil).map { $0.absoluteString.count < 25_000 } == true, "message long coupé pour tenir dans l'URL")
+        let compose = URL(string: "voidmail://compose?to=camille%40exemple.fr&subject=Programme&markdown=%23%20Titre%0A-%20un%20**point**")!
+        check(Bridges.request(from: compose) == .compose(to: "camille@exemple.fr", subject: "Programme", markdown: "# Titre\n- un **point**"), "voidmail://compose lu")
+        check(Bridges.request(from: URL(string: "mailto:a@b.fr")!) == nil && Bridges.request(from: URL(string: "voidmail://inconnu")!) == nil, "autres liens ignorés")
     }
 
     private static func dates() {

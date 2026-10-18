@@ -55,6 +55,15 @@ final class Outbox {
         return id
     }
 
+    /// `voidmail://compose?…`: a new message, its Markdown read back into the editor's format,
+    /// the signature under it.
+    func draft(fromCompose to: String, subject: String, markdown: String, account: MailAccount?) -> UUID? {
+        guard let account = account ?? store.accounts.first else { return nil }
+        var content = NoteMarkdown.content(fromMarkdown: markdown.trimmingCharacters(in: .newlines))
+        if let signature = account.signatureContent { content = content.appending(NoteContent(plain: "\n\n")).appending(signature) }
+        return add(Draft(account: account.id, to: to, subject: subject, content: content))
+    }
+
     /// The window of a draft closes. Sent or thrown away: nothing more. Otherwise, what was written
     /// goes to Brouillons (an untouched draft is simply forgotten).
     func windowClosed(_ id: UUID) {

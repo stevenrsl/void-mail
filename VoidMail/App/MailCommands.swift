@@ -42,6 +42,10 @@ struct MailCommands: Commands {
                 .keyboardShortcut("f", modifiers: [.command, .shift])
                 .disabled(!model.canReply)
             Divider()
+            Button(Bridges.notesInstalled ? "Envoyer vers Void Notes" : "Envoyer vers Void Notes — nécessite Void Notes") { model.sendToNotes() }
+                .keyboardShortcut("m", modifiers: [.command, .shift])
+                .disabled(!model.canSendToNotes)
+            Divider()
             Button("Relever") { Task { await model.refresh() } }
                 .keyboardShortcut("n", modifiers: [.command, .shift])
             Divider()

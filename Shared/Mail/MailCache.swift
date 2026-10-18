@@ -162,6 +162,11 @@ actor MailCache {
                      [account.uuidString, words.joined(separator: " "), limit], Self.summary)
     }
 
+    /// The message with that Message-ID, wherever it is kept (any account, any mailbox).
+    func find(messageID: String) -> MessageSummary? {
+        query("\(Self.summaryColumns) WHERE message_id = ? ORDER BY date DESC LIMIT 1", [messageID], Self.summary).first
+    }
+
     func setFlag(_ flag: String, on: Bool, message id: Int64) {
         guard var flags = query("SELECT flags FROM messages WHERE id = ?", [id], { Self.text($0, 0) }).first.map({ Set($0.split(separator: " ").map(String.init)) }) else { return }
         if on { flags.insert(flag) } else { flags.remove(flag) }

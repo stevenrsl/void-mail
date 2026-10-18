@@ -140,6 +140,9 @@ private struct MessageActions: View {
                 ChromeButton(symbol: "arrowshape.turn.up.right", help: "Transférer (⇧⌘F)", disabled: !model.canReply) { open(model.forwardDraft()) }
                 Rectangle().fill(Theme.stroke).frame(width: 1, height: 16).padding(.horizontal, 4)
             }
+            if model.canSendToNotes {
+                ChromeButton(symbol: "note.text.badge.plus", help: "Envoyer vers Void Notes (⇧⌘M)") { model.sendToNotes() }
+            }
             ChromeButton(symbol: summary.isFlagged ? "pin.fill" : "pin", help: summary.isFlagged ? "Désépingler (⌃⌘P)" : "Épingler en tête (⌃⌘P)",
                          active: summary.isFlagged) { model.togglePinned() }
             ChromeButton(symbol: summary.isSeen ? "envelope.badge" : "envelope.open", help: summary.isSeen ? "Marquer comme non lu (U)" : "Marquer comme lu (U)") { model.toggleSeen() }

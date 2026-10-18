@@ -1,5 +1,8 @@
 import Foundation
 import Observation
+#if os(macOS)
+import AppKit
+#endif
 
 /// What the window shows: which account, which mailbox, its messages, the one open. The cache
 /// answers at once; the server is asked behind it, and the list follows when it has answered.
@@ -248,6 +251,37 @@ final class MailModel {
         // Already being continued: that window.
         if let open = Outbox.shared.drafts.values.first(where: { $0.replaces == Draft.Origin(mailbox: summary.mailbox, uid: summary.uid) }) { return open.id }
         return Outbox.shared.add(Draft.resume(message, summary: summary, account: account))
+    }
+
+    // MARK: The family
+
+    var canSendToNotes: Bool { openMessage != nil && Bridges.notesInstalled }
+
+    /// ⇧⌘M: the open message to Void Notes, as a new note — its subject the title, its text,
+    /// and a « Source : » line that opens it again here.
+    func sendToNotes() {
+        guard let summary = selectedMessage, let message = openMessage,
+              let url = Bridges.noteURL(subject: summary.subject, text: message.readableText, messageID: message.messageID) else { return }
+        #if os(macOS)
+        if !NSWorkspace.shared.open(url) { serverError = "Void Notes n'a pas pu recevoir le message." }
+        #endif
+    }
+
+    /// `voidmail://message?id=…`: that message, in its account and mailbox, open.
+    func reveal(messageID: String) async {
+        guard let found = await cache.find(messageID: messageID), let account = store.account(found.account) else {
+            serverError = "Ce message n'est plus sur ce Mac (supprimé, ou d'un compte retiré)."
+            return
+        }
+        settings.currentAccount = account.id.uuidString
+        selectedMailbox = found.mailbox
+        query = ""
+        await reloadList()
+        if let summary = messages.first(where: { $0.id == found.id }) ?? Optional(found) {
+            if !messages.contains(where: { $0.id == summary.id }) { messages.insert(summary, at: 0) }
+            open(summary)
+        }
+        await refreshCounts(account)
     }
 
     // MARK: Gestures
