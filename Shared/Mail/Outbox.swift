@@ -139,15 +139,7 @@ final class Outbox {
             try await smtp.authenticate(user: account.username, credential: credential)
             try await smtp.send(from: built.envelopeFrom, to: built.recipients, data: built.data)
             await smtp.quit()
-            // The copy in Envoyés, where the server doesn't keep one itself. Sent already: a
-            // failure here is said, not undone.
-            if !ProviderDirectory.keepsSentCopy(account), let sent = account.mailboxes.first(where: { $0.role == .sent }) {
-                do {
-                    try await AccountSession(account: account).append(built.data, to: sent.path, flags: ["\\Seen"])
-                } catch {
-                    sendError = "Message envoyé, mais sa copie n'a pas pu être rangée dans Envoyés : \(Self.describe(error))"
-                }
-            }
+            await keepSentCopy(built, account: account)
             cleanUp(draft)
         } catch {
             // Nothing left: the message comes back in its window, to try again.
@@ -157,13 +149,42 @@ final class Outbox {
         }
     }
 
+    /// The copy in Envoyés. Some servers put one there by themselves (Gmail, Microsoft), others
+    /// don't, or not always (Proton Mail Bridge): rather than guess, Envoyés is searched for the
+    /// message a few times over 12 seconds, and the copy is put there only if it isn't. Sent
+    /// already: a failure here is said, not undone.
+    private func keepSentCopy(_ built: MessageComposer.Built, account: MailAccount) async {
+        guard let sent = account.mailboxes.first(where: { $0.role == .sent }) else { return }
+        let session = AccountSession(account: account)
+        for wait in [2, 4, 6] {
+            try? await Task.sleep(for: .seconds(wait))
+            // A server that can't search (an error): the copy is made, rather than lost.
+            guard let found = try? await session.contains(messageID: built.messageID, in: sent.path) else { break }
+            if found {
+                await session.close()
+                await MailModel.shared.mailboxChanged(sent.path, account: account.id)
+                return
+            }
+        }
+        do {
+            try await session.append(built.data, to: sent.path, flags: ["\\Seen"])
+            await MailModel.shared.mailboxChanged(sent.path, account: account.id)
+        } catch {
+            sendError = "Message envoyé, mais sa copie n'a pas pu être rangée dans Envoyés : \(Self.describe(error))"
+        }
+        await session.close()
+    }
+
     private func saveToDrafts(_ draft: Draft, account: MailAccount) async throws {
         #if DEBUG
         if DebugLaunch.isRequested { return }
         #endif
         guard let mailbox = account.mailboxes.first(where: { $0.role == .drafts }) else { return }
         let built = MessageComposer.build(draft, from: account, files: MessageComposer.files(of: draft))
-        try await AccountSession(account: account).append(built.data, to: mailbox.path, flags: ["\\Draft", "\\Seen"])
+        let session = AccountSession(account: account)
+        try await session.append(built.data, to: mailbox.path, flags: ["\\Draft", "\\Seen"])
+        await session.close()
+        await MailModel.shared.mailboxChanged(mailbox.path, account: account.id)
     }
 
     private func cleanUp(_ draft: Draft) {

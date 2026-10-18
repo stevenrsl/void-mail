@@ -97,6 +97,7 @@ enum SelfTest {
         check(!MailboxSidebar.showsUnseen(Mailbox(path: "All Mail", delimiter: "/", attributes: ["\\All"])) && MailboxSidebar.showsUnseen(Mailbox(path: "INBOX", delimiter: "/", attributes: [])), "non lus montrés là où il y a quelque chose à faire")
         check(IMAPClient.uidSet([9, 3, 4, 5, 12, 11]) == "3:5,9,11:12", "plages d'UID")
         check(IMAPClient.uidSet([7]) == "7", "un seul UID")
+        check(IMAPClient.parseSearch(IMAPLine("* SEARCH 12 15")) == [12, 15] && IMAPClient.parseSearch(IMAPLine("* SEARCH")).isEmpty, "SEARCH : UIDs trouvés, ou aucun")
         check(IMAPClient.code("UIDVALIDITY", in: "* OK [UIDVALIDITY 3857529045] UIDs valid") == 3857529045, "UIDVALIDITY")
     }
 

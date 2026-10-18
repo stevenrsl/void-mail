@@ -117,7 +117,7 @@ Un geste par message, au clavier dans la liste, par les boutons au bout de la li
 - **Répondre** : « Re: » (jamais « Re: Re: »), le texte d'origine en citation sous « Le 18 oct. 2026 à 18:05, Camille a écrit : », le curseur au-dessus ; répondre à tous écarte sa propre adresse ; le fil est gardé (`In-Reply-To`, `References`).
 - **Ce qui part** : `multipart/alternative` — une version texte en Markdown, lisible telle quelle, et un HTML sobre (titres, listes, citations, gras…, aucune police ni couleur imposée) —, les fichiers en `multipart/mixed`, objet et noms encodés (RFC 2047), quoted-printable à 76 colonnes, CRLF. Les Cci sont dans l'enveloppe SMTP, jamais dans les en-têtes.
 - **Envoi différé** : « Envoyer » (⌘↩) ferme la fenêtre ; le message part **10 secondes** plus tard — « Envoi de « … » · Annuler » en bas de la liste, ou ⌘Z, le rouvre. Quitter l'app l'envoie d'abord. S'il échoue, il revient dans sa fenêtre, rien n'est perdu.
-- **Envoyés** : une copie y est rangée (IMAP `APPEND`), sauf chez Gmail, Microsoft et Proton Mail Bridge, qui le font eux-mêmes.
+- **Envoyés** : après l'envoi, Void Mail cherche le message dans Envoyés par son `Message-ID` (2, puis 4, puis 6 secondes plus tard) ; les serveurs qui y rangent eux-mêmes une copie (Gmail, Microsoft) n'en ont donc pas deux, et chez les autres — Proton Mail Bridge compris, vérifié — la copie est déposée par IMAP `APPEND`.
 - **Brouillons** : fermer la fenêtre sans envoyer range le message dans Brouillons (pas de bouton « Enregistrer ») ; la corbeille en haut à gauche le jette. Un message laissé vide est simplement oublié.
 - **`mailto:`** : Void Mail ouvre les liens `mailto:` (destinataire, objet, texte, Cc) dans un nouveau message.
 
@@ -143,7 +143,7 @@ Un geste par message, au clavier dans la liste, par les boutons au bout de la li
 - ✅ Écrire : message composé puis relu par le décodeur (objet accentué, destinataires, Cci absent des en-têtes, Markdown, HTML, pièce jointe au nom accentué, CRLF), quoted-printable, réponse (destinataires, « Re: », fil, citation), répondre à tous, transfert, adresses vérifiées, `mailto:`
 - ☑️ Fenêtre d'écriture, actions au survol (captures en démonstration)
 - ☑️ **Envoi réel (SMTP)** : vérifié à la main avec le compte Proton (via Bridge), le 18 oct. 2026
-- 🟡 Brouillon rangé à la fermeture, copie dans Envoyés chez les hébergeurs qui ne la font pas eux-mêmes : pas encore vérifiés sur un vrai compte
+- 🟡 Copie dans Envoyés (recherche puis `APPEND`), brouillon rangé à la fermeture : pas encore vérifiés sur un vrai compte
 - ❌ Messages plus anciens que les 300 derniers, lecture épurée, gestes sur plusieurs messages à la fois, rouvrir un brouillon de Brouillons pour le continuer, signature
 - ❌ Ponts avec Void et Void Notes (« Envoyer vers Void Notes », « Envoyer la page par mail »)
 - ❌ iPhone
@@ -154,7 +154,7 @@ Un geste par message, au clavier dans la liste, par les boutons au bout de la li
 "build/DerivedData/Build/Products/Debug/Void Mail.app/Contents/MacOS/Void Mail" -selfTest YES
 ```
 
-116 vérifications avec `-network YES` (112 sans). Le code de sortie est le nombre d'échecs. Le test ne touche ni aux vrais comptes, ni aux préférences, ni au trousseau.
+117 vérifications avec `-network YES` (113 sans). Le code de sortie est le nombre d'échecs. Le test ne touche ni aux vrais comptes, ni aux préférences, ni au trousseau.
 
 Autres arguments (builds Debug) : `-demo YES` (deux comptes de démonstration et leur Réception ; `-openUID 101` ou `103` ouvre un message texte ou HTML, `-gesture archive`, `trash` ou `pin` y applique un geste, `-hoverUID 103` montre les actions au survol, `-compose reply` ou `new` ouvre une fenêtre d'écriture, `-closeCompose YES` la ferme et dit si l'app a tenu, `-composeTo l` y tape « l » dans le champ À pour montrer les suggestions), `-addAccount YES -address <adresse>` (la feuille ouverte), `-theme light -accent pink -tint peach` (l'apparence), `-snapshot YES` (une capture de la fenêtre, ou de la feuille ouverte, en PNG base64 sur la sortie standard, la seule sortie que le bac à sable laisse lire) :
 

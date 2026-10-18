@@ -70,6 +70,14 @@ actor AccountSession {
         }
     }
 
+    /// A message with that Message-ID is in the mailbox.
+    func contains(messageID: String, in mailbox: String) async throws -> Bool {
+        try await withConnection { client in
+            _ = try await self.open(mailbox, client)
+            return try await !client.search(messageID: messageID).isEmpty
+        }
+    }
+
     func append(_ data: Data, to mailbox: String, flags: [String]) async throws {
         try await withConnection { client in
             try await client.append(data, to: mailbox, flags: flags)

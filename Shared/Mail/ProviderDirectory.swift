@@ -81,14 +81,6 @@ enum ProviderDirectory {
                        auths: [.oauth(.microsoft)], appPasswordHelp: nil, isKnown: true),
     ]
 
-    /// Servers that put what is sent through them in Envoyés by themselves: Void Mail doesn't add
-    /// a second copy there. Gmail, Microsoft, Proton Mail Bridge.
-    static func keepsSentCopy(_ account: MailAccount) -> Bool {
-        let host = account.smtp.host.lowercased()
-        return host.hasSuffix("gmail.com") || host.hasSuffix("office365.com") || host.hasSuffix("outlook.com")
-            || (LocalBridgeTrust.localHosts.contains(host) && account.smtp.port == 1025)
-    }
-
     /// The usual secure port for a security, to fill in when it changes.
     static func defaultPort(imap: Bool, security: ConnectionSecurity) -> Int {
         switch (imap, security) {

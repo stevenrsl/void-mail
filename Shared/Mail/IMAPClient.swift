@@ -186,6 +186,19 @@ final class IMAPClient {
         }
     }
 
+    /// The UIDs of the open mailbox's messages with that Message-ID (a copy already there?).
+    func search(messageID: String) async throws -> [Int] {
+        let lines = try await command("UID SEARCH HEADER Message-ID \(Self.quoted(messageID))")
+        return lines.flatMap(Self.parseSearch)
+    }
+
+    /// `* SEARCH 12 15` → [12, 15].
+    static func parseSearch(_ line: IMAPLine) -> [Int] {
+        let words = line.text.split(separator: " ")
+        guard words.count >= 2, words[1].uppercased() == "SEARCH" else { return [] }
+        return words.dropFirst(2).compactMap { Int($0) }
+    }
+
     /// Deletes messages for good (from the trash).
     func delete(uids: [Int]) async throws {
         guard !uids.isEmpty else { return }

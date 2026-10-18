@@ -392,6 +392,12 @@ final class MailModel {
         }
     }
 
+    /// A mailbox changed by the app itself (a copy in Envoyés, a draft): shown again if it is open.
+    func mailboxChanged(_ path: String, account id: UUID) async {
+        guard let account = currentAccount, account.id == id else { return }
+        if selectedMailbox == path, query.isEmpty { await refresh() } else { await refreshCounts(account) }
+    }
+
     /// Something changed in an account's Inbox: the list if it is the one shown, the counts anyway.
     func inboxChanged(_ id: UUID) async {
         guard let account = currentAccount, account.id == id else { return }
