@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -13,7 +14,8 @@ struct ComposeView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showsCopies = false
     @State private var problem: String?
-    @State private var editor: NoteTextView?
+    /// The text view, for the controls beside it and for « Envoyer ».
+    @State private var handle = EditorHandle()
 
     var body: some View {
         if let draft = outbox.drafts[id] {
@@ -69,7 +71,7 @@ struct ComposeView: View {
             }
 
             ComposeEditor(draft: draft, accent: settings.accent, checksSpelling: settings.checksSpelling, checksGrammar: settings.checksGrammar,
-                          focusesText: focusesText(draft), editor: $editor) { content in
+                          focusesText: focusesText(draft), handle: handle, discard: discard) { content in
                 outbox.update(id) { $0.content = content }
             }
             .background(MessageSurface(drawsFrame: false))
@@ -82,19 +84,7 @@ struct ComposeView: View {
         .background(ChromeBackground().ignoresSafeArea())
         .tint(Theme.accent)
         .toolbar {
-            ToolbarItem(placement: .navigation) {
-                ChromeButton(symbol: "trash", help: "Supprimer le brouillon") {
-                    outbox.discard(id)
-                    dismiss()
-                }
-            }
-            .plainToolbarItem()
             if #available(macOS 26.0, *) { ToolbarSpacer(.flexible) }
-            ToolbarItem(placement: .primaryAction) {
-                ChromeButton(symbol: "paperclip", help: "Joindre un fichier (⇧⌘A)") { editor?.chooseAttachments() }
-                    .keyboardShortcut("a", modifiers: [.command, .shift])
-            }
-            .plainToolbarItem()
             ToolbarItem(placement: .primaryAction) {
                 Button("Envoyer") { send() }
                     .primaryButton()
@@ -108,6 +98,8 @@ struct ComposeView: View {
         } message: {
             Text(problem ?? "")
         }
+        // The pointer moves, a click, a scroll: the controls that faded while typing come back.
+        .background(PointerWatcher { if handle.writing { handle.writing = false } })
         .onDisappear { outbox.windowClosed(id) }
     }
 
@@ -119,9 +111,15 @@ struct ComposeView: View {
         return draft.inReplyTo != nil || !draft.to.isEmpty
     }
 
+    /// The draft thrown away, its window closed.
+    private func discard() {
+        outbox.discard(id)
+        dismiss()
+    }
+
     private func send() {
         // What the editor holds right now, the last keystroke included.
-        if let editor { outbox.update(id) { $0.content = editor.content } }
+        if let editor = handle.editor { outbox.update(id) { $0.content = editor.content } }
         guard let draft = outbox.drafts[id] else { return }
         if let problem = outbox.problem(with: draft) {
             self.problem = problem
@@ -276,6 +274,83 @@ private struct ForwardedFiles: View {
     }
 }
 
+/// At the end of the text's first line, as by a note's title: formatting, images, files, and
+/// the trash that throws the draft away. Faded while typing.
+private struct ComposeActions: View {
+    let handle: EditorHandle
+    let discard: () -> Void
+    var floating = false
+
+    var body: some View {
+        HStack(spacing: 4) {
+            FormatButton(handle: handle)
+            PhotoButton(handle: handle)
+            ChromeButton(symbol: "paperclip", help: "Joindre un fichier (⇧⌘A)") { handle.editor?.chooseAttachments() }
+            ChromeButton(symbol: "trash", help: "Supprimer le brouillon", action: discard)
+        }
+        .opacity(0.8)
+        .padding(NoteTextView.accessoryInset)
+        .background {
+            if floating {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Theme.surface)
+                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Theme.stroke))
+                    .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
+                    .transition(.opacity)
+            }
+        }
+        .animation(Theme.quick, value: floating)
+        .opacity(handle.writing ? 0 : 1)
+        .allowsHitTesting(!handle.writing)
+        .animation(.easeInOut(duration: handle.writing ? 0.6 : 0.2), value: handle.writing)
+    }
+}
+
+/// Images, from the photo library or from a file: in the text, sent along like any file.
+private struct PhotoButton: View {
+    let handle: EditorHandle
+    @State private var showsPicker = false
+    @State private var picked: [PhotosPickerItem] = []
+    @State private var hovering = false
+
+    var body: some View {
+        Menu {
+            Button("Depuis la photothèque", systemImage: "photo.on.rectangle") { showsPicker = true }
+            Button("Depuis un fichier…", systemImage: "folder") { handle.editor?.choosePhotos() }
+        } label: {
+            Image(systemName: "photo.on.rectangle.angled")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Theme.secondaryText)
+                .frame(width: 26, height: 26)
+                .background(RoundedRectangle(cornerRadius: 7).fill(hovering ? Theme.hover : .clear))
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Ajouter des images")
+        .accessibilityLabel("Ajouter des images")
+        .onHover { hovering = $0 }
+        .animation(Theme.quick, value: hovering)
+        .photosPicker(isPresented: $showsPicker, selection: $picked, maxSelectionCount: 30, matching: .images)
+        .onChange(of: picked) { _, items in
+            guard !items.isEmpty, let editor = handle.editor else { return }
+            picked = []
+            Task {
+                var names: [String] = []
+                for item in items {
+                    guard let data = try? await item.loadTransferable(type: Data.self) else { continue }
+                    let type = item.supportedContentTypes.first { $0.conforms(to: .image) }
+                    if let name = editor.attachData?(data, "Photo.\(type?.preferredFilenameExtension ?? "jpg")") { names.append(name) }
+                }
+                editor.insertAttachments(names, at: editor.selectedRange())
+                editor.focus()
+            }
+        }
+    }
+}
+
 /// Void Notes' text view, for a message: no title line, no dates, no album; the files dropped
 /// or pasted in it are kept in the draft's folder and sent along.
 private struct ComposeEditor: NSViewRepresentable {
@@ -285,7 +360,8 @@ private struct ComposeEditor: NSViewRepresentable {
     let checksGrammar: Bool
     /// A reply, or a message with its recipient already there: the text takes the keyboard.
     let focusesText: Bool
-    @Binding var editor: NoteTextView?
+    let handle: EditorHandle
+    let discard: () -> Void
     let onChange: (NoteContent) -> Void
 
     func makeNSView(context: Context) -> NSScrollView {
@@ -299,7 +375,12 @@ private struct ComposeEditor: NSViewRepresentable {
         // A reply: the cursor before the quote, on the blank line left for it.
         if focusesText { textView.setSelectedRange(NSRange(location: 0, length: 0)) }
         textView.takesFocusWhenShown = focusesText
-        DispatchQueue.main.async { editor = textView }
+        handle.editor = textView
+        textView.onTyping = { [handle] in if !handle.writing { handle.writing = true } }
+        // Void Notes' controls, at the end of the first line; over the text once it has scrolled.
+        let actions = NSHostingView(rootView: ComposeActions(handle: handle, discard: discard))
+        textView.accessory = actions
+        textView.accessoryFloats = { [handle, discard] in actions.rootView = ComposeActions(handle: handle, discard: discard, floating: $0) }
         return scrollView
     }
 

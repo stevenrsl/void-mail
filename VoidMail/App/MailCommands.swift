@@ -80,6 +80,11 @@ struct MailCommands: Commands {
             Button("Liste numérotée") { editor?.toggleList(.numbered) }.keyboardShortcut("8", modifiers: [.command, .option])
             Button("Citation") { editor?.setBlock(editor?.currentBlock == .quote ? nil : .quote) }.keyboardShortcut("9", modifiers: [.command, .option])
             Button("Séparateur") { editor?.insertDivider() }
+            Divider()
+            Button("Lien…") { if let editor { NotificationCenter.default.post(name: EditorHandle.linkRequest, object: editor) } }
+                .keyboardShortcut("k")
+            Button("Joindre un fichier…") { editor?.chooseAttachments() }
+                .keyboardShortcut("a", modifiers: [.command, .shift])
         }
         CommandGroup(after: .sidebar) {
             Button(settings.showsSidebar ? "Masquer les boîtes" : "Afficher les boîtes") {

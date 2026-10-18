@@ -99,3 +99,52 @@ struct WindowChrome: View {
         .ignoresSafeArea()
     }
 }
+
+/// Tells when the pointer is used in its window — moved by more than a nudge, clicked, or
+/// scrolled — through a local event monitor that lets every event go on its way.
+struct PointerWatcher: NSViewRepresentable {
+    let onPointer: () -> Void
+
+    func makeNSView(context: Context) -> WatcherView {
+        let view = WatcherView()
+        view.onPointer = onPointer
+        return view
+    }
+
+    func updateNSView(_ nsView: WatcherView, context: Context) {
+        nsView.onPointer = onPointer
+    }
+
+    final class WatcherView: NSView {
+        var onPointer: (() -> Void)?
+        private var monitor: Any?
+        /// How far the pointer went since the last keystroke: a palm grazing the trackpad isn't a move.
+        private var travelled: CGFloat = 0
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if let monitor { NSEvent.removeMonitor(monitor) }
+            monitor = nil
+            guard window != nil else { return }
+            monitor = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDown, .rightMouseDown, .scrollWheel, .keyDown]) { [weak self] event in
+                self?.handle(event)
+                return event
+            }
+        }
+
+        private func handle(_ event: NSEvent) {
+            guard let window, event.window === window else { return }
+            switch event.type {
+            case .keyDown:
+                travelled = 0
+            case .mouseMoved:
+                travelled += abs(event.deltaX) + abs(event.deltaY)
+                if travelled > 12 { travelled = 0; onPointer?() }
+            default:
+                onPointer?()
+            }
+        }
+    }
+}
