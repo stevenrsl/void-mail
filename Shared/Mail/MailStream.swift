@@ -35,16 +35,27 @@ final class MailStream {
 
     /// One line, without its CRLF.
     func readLine() async throws -> String {
+        String(decoding: try await readLineData(), as: UTF8.self)
+    }
+
+    /// One line as it came, without its CRLF: message headers and bodies aren't always UTF-8.
+    func readLineData() async throws -> Data {
         while true {
             if let range = buffer.firstRange(of: Data([0x0D, 0x0A])) {
-                let line = buffer[buffer.startIndex..<range.lowerBound]
+                let line = Data(buffer[buffer.startIndex..<range.lowerBound])
                 buffer.removeSubrange(buffer.startIndex..<range.upperBound)
-                let text = String(decoding: line, as: UTF8.self)
-                transcript.append("S: " + text)
-                return text
+                log("S: " + String(decoding: line.prefix(200), as: UTF8.self))
+                return line
             }
             try await fill()
         }
+    }
+
+    /// The transcript keeps the beginning of each line, and the last lines only: a long session
+    /// fetches whole messages.
+    private func log(_ line: String) {
+        transcript.append(line)
+        if transcript.count > 400 { transcript.removeFirst(transcript.count - 300) }
     }
 
     /// Exactly `count` bytes (an IMAP literal).
@@ -57,7 +68,7 @@ final class MailStream {
 
     /// Sends a line; with `secret`, what is logged stops at it.
     func send(_ line: String, secret: String? = nil) async throws {
-        transcript.append("C: " + (secret.map { line.replacingOccurrences(of: $0, with: "•••") } ?? line))
+        log("C: " + (secret.map { line.replacingOccurrences(of: $0, with: "•••") } ?? line))
         do {
             try await task.write(Data((line + "\r\n").utf8), timeout: timeout)
         } catch {

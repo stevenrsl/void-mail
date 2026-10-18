@@ -65,6 +65,71 @@ final class IMAPClient {
         }
     }
 
+    struct Selection: Equatable {
+        var exists = 0
+        var uidValidity = 0
+        var uidNext: Int?
+    }
+
+    /// Opens a mailbox: how many messages, and the numbering of their UIDs.
+    func select(_ path: String) async throws -> Selection {
+        var selection = Selection()
+        for line in try await command("SELECT \(Self.quoted(ModifiedUTF7.encode(path)))") {
+            let text = line.text
+            let words = text.split(separator: " ")
+            if words.count >= 3, words[2].uppercased() == "EXISTS" { selection.exists = Int(words[1]) ?? 0 }
+            if let value = Self.code("UIDVALIDITY", in: text) { selection.uidValidity = value }
+            if let value = Self.code("UIDNEXT", in: text) { selection.uidNext = value }
+        }
+        return selection
+    }
+
+    static let envelopeItems = "(UID FLAGS INTERNALDATE RFC822.SIZE ENVELOPE)"
+
+    /// Envelopes by UID range (`123:*`), or the last `count` messages by position (first visit).
+    func fetchEnvelopes(uidsFrom first: Int) async throws -> [MessageEnvelope] {
+        try await command("UID FETCH \(first):* \(Self.envelopeItems)").compactMap(MessageEnvelope.init(fetch:))
+            .filter { $0.uid >= first }
+    }
+
+    func fetchLatestEnvelopes(count: Int, exists: Int) async throws -> [MessageEnvelope] {
+        guard exists > 0 else { return [] }
+        return try await command("FETCH \(max(1, exists - count + 1)):* \(Self.envelopeItems)").compactMap(MessageEnvelope.init(fetch:))
+    }
+
+    /// The flags of every message from a UID on: those absent are gone from the server.
+    func fetchFlags(uidsFrom first: Int) async throws -> [Int: Set<String>] {
+        var result: [Int: Set<String>] = [:]
+        for line in try await command("UID FETCH \(first):* (UID FLAGS)") {
+            let values = line.values
+            guard values.count >= 4 else { continue }
+            let items = values[3].pairs
+            if let uid = items["UID"]?.number, uid >= first { result[uid] = Set((items["FLAGS"]?.list ?? []).compactMap(\.text)) }
+        }
+        return result
+    }
+
+    /// The whole message, as it is on the server, without marking it read.
+    func fetchBody(uid: Int) async throws -> Data? {
+        for line in try await command("UID FETCH \(uid) (UID BODY.PEEK[])") {
+            let values = line.values
+            guard values.count >= 4 else { continue }
+            let items = values[3].pairs
+            if items["UID"]?.number == uid, let body = items["BODY[]"]?.data { return body }
+        }
+        return nil
+    }
+
+    func store(uid: Int, flag: String, on: Bool) async throws {
+        try await command("UID STORE \(uid) \(on ? "+" : "-")FLAGS.SILENT (\(flag))")
+    }
+
+    /// `* OK [UIDVALIDITY 3857529045] …` → 3857529045.
+    static func code(_ name: String, in text: String) -> Int? {
+        guard let range = text.range(of: "[\(name) ", options: .caseInsensitive) else { return nil }
+        return Int(text[range.upperBound...].prefix { $0.isNumber })
+    }
+
     func logout() async {
         _ = try? await command("LOGOUT")
         stream.close()
@@ -74,7 +139,7 @@ final class IMAPClient {
 
     private func refreshCapabilities() async throws {
         let lines = try await command("CAPABILITY")
-        capabilities = lines.reduce(into: []) { $0.formUnion(Self.capabilities(in: $1)) }
+        capabilities = lines.reduce(into: []) { $0.formUnion(Self.capabilities(in: $1.text)) }
     }
 
     private func authenticate(mechanism: String, response: String, initial: Bool) async throws {
@@ -102,34 +167,42 @@ final class IMAPClient {
         }
     }
 
-    /// Sends a tagged command; returns the untagged lines (literals spliced in, quoted), throws
-    /// on NO or BAD.
+    /// Sends a tagged command; returns the untagged lines (their literals in place), throws on
+    /// NO or BAD.
     @discardableResult
-    private func command(_ text: String, secret: String? = nil) async throws -> [String] {
+    private func command(_ text: String, secret: String? = nil) async throws -> [IMAPLine] {
         tag += 1
         let label = "v\(tag)"
         try await stream.send("\(label) \(text)", secret: secret)
-        var lines: [String] = []
+        var lines: [IMAPLine] = []
         while true {
-            let line = try await readResponseLine()
-            if line.hasPrefix(label + " ") {
-                let status = line.dropFirst(label.count + 1)
-                guard status.hasPrefix("OK") else { throw MailError.unexpected(String(status)) }
+            let line = try await readResponse()
+            if line.data.starts(with: Data((label + " ").utf8)) {
+                let status = String(line.text.dropFirst(label.count + 1))
+                guard status.uppercased().hasPrefix("OK") else { throw MailError.unexpected(status) }
                 return lines
             }
-            if line.hasPrefix("* ") { lines.append(line) }
+            if line.data.starts(with: Data("* ".utf8)) { lines.append(line) }
         }
     }
 
-    /// A response line, with any `{n}` literal read and put back in as a quoted string.
-    private func readResponseLine() async throws -> String {
-        var line = try await stream.readLine()
-        while let match = line.range(of: #"\{(\d+)\+?\}$"#, options: .regularExpression) {
-            let count = Int(line[match].filter(\.isNumber)) ?? 0
-            let literal = String(decoding: try await stream.read(count: count), as: UTF8.self)
-            line = String(line[..<match.lowerBound]) + Self.quoted(literal) + (try await stream.readLine())
+    /// A response, its `{n}` literals read and kept in place, as bytes.
+    private func readResponse() async throws -> IMAPLine {
+        var line = IMAPLine(data: try await stream.readLineData())
+        while let count = Self.literalLength(at: line.data) {
+            line.literalStarts.insert(line.data.count)
+            line.data.append(try await stream.read(count: count))
+            line.data.append(try await stream.readLineData())
         }
         return line
+    }
+
+    /// `… {123}` (or `{123+}`) at the end of the bytes read so far.
+    private static func literalLength(at data: Data) -> Int? {
+        guard data.last == 0x7D, let open = data.lastIndex(of: 0x7B) else { return nil }
+        let digits = data[(open + 1)..<(data.endIndex - 1)].filter { $0 != 0x2B }
+        guard !digits.isEmpty, digits.allSatisfy({ (0x30...0x39).contains($0) }) else { return nil }
+        return Int(String(decoding: digits, as: UTF8.self))
     }
 
     // MARK: Parsing
@@ -148,44 +221,15 @@ final class IMAPClient {
     }
 
     /// `* LIST (\HasNoChildren \Sent) "/" "Sent Messages"` → a mailbox.
-    static func parseList(_ line: String) -> Mailbox? {
-        guard line.hasPrefix("* LIST ") || line.hasPrefix("* XLIST ") else { return nil }
-        var scanner = Substring(line.drop { $0 != "(" })
-        guard scanner.first == "(", let close = scanner.firstIndex(of: ")") else { return nil }
-        let attributes = Set(scanner[scanner.index(after: scanner.startIndex)..<close].split(separator: " ").map(String.init))
-        scanner = scanner[scanner.index(after: close)...].drop { $0 == " " }
-        guard let delimiter = readAString(&scanner) else { return nil }
-        scanner = scanner.drop { $0 == " " }
-        guard let name = readAString(&scanner) else { return nil }
-        return Mailbox(path: ModifiedUTF7.decode(name), delimiter: delimiter == "NIL" ? nil : delimiter, attributes: attributes)
+    static func parseList(_ line: IMAPLine) -> Mailbox? {
+        let values = line.values
+        guard values.count >= 5, values[0].text == "*", ["LIST", "XLIST"].contains(values[1].text?.uppercased() ?? ""),
+              let flags = values[2].list, let name = values[4].text else { return nil }
+        return Mailbox(path: ModifiedUTF7.decode(name), delimiter: values[3].text,
+                       attributes: Set(flags.compactMap(\.text)))
     }
 
-    /// A quoted string (with `\"` and `\\`), NIL, or an atom.
-    private static func readAString(_ scanner: inout Substring) -> String? {
-        guard let first = scanner.first else { return nil }
-        if first == "\"" {
-            var result = ""
-            var index = scanner.index(after: scanner.startIndex)
-            while index < scanner.endIndex {
-                let character = scanner[index]
-                if character == "\\" {
-                    index = scanner.index(after: index)
-                    guard index < scanner.endIndex else { return nil }
-                    result.append(scanner[index])
-                } else if character == "\"" {
-                    scanner = scanner[scanner.index(after: index)...]
-                    return result
-                } else {
-                    result.append(character)
-                }
-                index = scanner.index(after: index)
-            }
-            return nil
-        }
-        let atom = scanner.prefix { $0 != " " }
-        scanner = scanner[atom.endIndex...]
-        return String(atom)
-    }
+    static func parseList(_ line: String) -> Mailbox? { parseList(IMAPLine(line)) }
 
     static func quoted(_ text: String) -> String {
         "\"" + text.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") + "\""

@@ -15,7 +15,7 @@ struct MailboxSidebar: View {
                         let mailboxes = account.sortedMailboxes
                         ForEach(mailboxes) { mailbox in
                             MailboxRow(mailbox: mailbox, selected: model.selectedMailbox == mailbox.path) {
-                                model.selectedMailbox = mailbox.path
+                                model.selectMailbox(mailbox.path)
                             }
                             .disabled(!mailbox.isSelectable)
                             // A line between the special mailboxes and the server's other folders.

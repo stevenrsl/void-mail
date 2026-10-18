@@ -1,13 +1,15 @@
 # Void Mail
 
-**Un courrier qui s'efface derrière le message.** Version **0.0.1** (squelette). Void Mail est le troisième compagnon de Void et de [Void Notes](../Void%20Notes) : même palette, même chrome sombre, mêmes réglages d'apparence, rien de superflu à l'écran. Le projet et ses choix sont décrits dans [CONCEPT.md](CONCEPT.md).
+**Un courrier qui s'efface derrière le message.** Version **0.0.2** (préversion : lire). Void Mail est le troisième compagnon de Void et de [Void Notes](../Void%20Notes) : même palette, même chrome sombre, mêmes réglages d'apparence, rien de superflu à l'écran. Le projet et ses choix sont décrits dans [CONCEPT.md](CONCEPT.md).
 
 - Swift + SwiftUI, AppKit là où c'est utile (fenêtre, barre de titre)
 - Mac : Apple silicon, macOS 14 minimum. iPhone : plus tard, sur `Shared/`
-- **≈ 1,6 Mo** (build Release), aucune dépendance externe (Foundation, Security, CryptoKit, AuthenticationServices)
+- **≈ 1,9 Mo** (build Release), aucune dépendance externe (Foundation, Security, CryptoKit, AuthenticationServices, WebKit, SQLite du système)
 - Aucun compte Void, aucun serveur intermédiaire : l'app parle directement aux serveurs IMAP et SMTP de l'hébergeur
 
 ![Void Mail, thème sombre (comptes de démonstration)](docs/screenshots/sombre.png)
+
+![Un message HTML, son pixel espion bloqué](docs/screenshots/html-protege.png)
 
 | | |
 |---|---|
@@ -67,10 +69,20 @@ Réglages (⌘,) → Comptes, ou ⇧⌘N, ou le « + » en bas de la barre laté
 
 La mise en page de Void Notes, avec une colonne de plus :
 - les boîtes sur le cadre : Réception, Archives, Envoyés, Brouillons, Indésirables, Corbeille (reconnues par leurs attributs SPECIAL-USE, ou par leur nom sur les serveurs qui n'en ont pas), un trait, puis les autres dossiers du serveur en gris, en retrait selon leur profondeur, avec leurs noms accentués décodés (UTF-7 modifié) ;
-- les messages et le message, sur la feuille posée sur le cadre ;
+- les messages et le message, sur la feuille posée sur le cadre (voir « Lire ») ;
 - les comptes en bas de la barre latérale, comme les espaces de Void Notes (⌃⌘← / ⌃⌘→ pour passer de l'un à l'autre).
 
 Réglages → Apparence : thème, couleur d'accent et teinte de la fenêtre, **le même code et les mêmes clés** que Void et Void Notes (`Shared/App/Theme.swift`, `ChromeTint.swift`).
+
+## Lire
+
+- **La liste** : expéditeur et date (« 15:41 », « hier », « vendredi », « 2 oct. »), objet ; non lu en clair avec un point d'accent, lu en gris. ↑ ↓ ou J K pour passer d'un message à l'autre, U (ou ⇧⌘U) pour lu / non lu, ⌘R pour relever.
+- **Relève** : à l'ouverture d'une boîte, au retour dans l'app et par ⌘R. La première visite d'une boîte rapporte ses **300 derniers messages** ; ensuite seuls les nouveaux, les drapeaux des autres, et ce qui a disparu du serveur est retiré. Une connexion IMAP par compte, gardée ouverte, rouverte une fois si elle est tombée.
+- **Le message** : l'objet en titre, la ligne de l'expéditeur et de la date en petite chasse fixe, comme les dates d'une note. Ouvrir un message le marque lu, sur le serveur aussi. Un texte brut prend la typographie de l'app, ses adresses deviennent des liens ; un message HTML garde sa page blanche, sur une carte, **sans JavaScript, sans cookies, sans rien charger d'Internet** (une politique de sécurité de contenu passe devant celle du message). « Charger les images » les autorise pour ce message. Les images intégrées (`cid:`) s'affichent toujours. Un lien s'ouvre dans le navigateur.
+- **Pièces jointes** : en cartes (icône, nom, taille) sous l'en-tête ; un clic en ouvre une copie dans son app.
+- **Recherche** : dans toutes les boîtes du compte, sur l'objet, l'expéditeur et le texte des messages déjà ouverts, au début des mots, accents ignorés (FTS5).
+- **Cache** : `mail.sqlite` à côté de `accounts.json` : enveloppes des boîtes visitées, messages ouverts, index de recherche. Le serveur reste la vérité : si la boîte est renumérotée (UIDVALIDITY), ce que le cache en savait est oublié. Retirer un compte retire aussi son cache.
+- **Décodage** : MIME complet (parties imbriquées, quoted-printable, base64, jeux de caractères, mots encodés RFC 2047, noms de fichier RFC 2231), réponses IMAP lues en octets bruts, littéraux compris.
 
 ## État (honnête)
 
@@ -84,11 +96,13 @@ Réglages → Apparence : thème, couleur d'accent et teinte de la fenêtre, **l
 - ✅ Comptes enregistrés sans aucun secret ; trousseau (en mémoire pendant le test)
 - ✅ **Connexions réelles, sans identifiants** (`-network YES`) : IMAP en TLS (Gmail), IMAP passé en STARTTLS (Microsoft), SMTP passé en STARTTLS (iCloud), mauvais mot de passe refusé avec un message clair
 - ☑️ Feuille d'ajout de compte, barre latérale, barre des comptes, réglages, apparence (captures ci-dessus)
-- 🟡 **Connexion complète d'un vrai compte** (mot de passe → boîtes listées → SMTP authentifié) : le code est là, il n'a pas encore tourné avec de vrais identifiants
+- ✅ Réponses FETCH (enveloppes, littéraux, drapeaux), MIME (parties imbriquées, quoted-printable Latin-1, images `cid:`, pièces jointes base64, pixel espion repéré), dates de la liste, politique HTML, cache et recherche (ordre, accents, mots partiels, retrait, UIDVALIDITY)
+- ☑️ **Connexion complète d'un vrai compte** : vérifiée à la main avec un compte Proton (domaine perso, via Bridge) — boîtes listées, SMTP authentifié
+- ☑️ Liste des messages, message texte et HTML, bandeau des images, pièces jointes (captures ci-dessus, comptes de démonstration)
+- 🟡 **Relève sur un vrai compte** : écrite, pas encore essayée ; à faire sur le compte Proton
 - 🟡 **OAuth Microsoft** : écrit, jamais exécuté de bout en bout (pas d'identifiant Azure, pas de compte Outlook)
-- 🟡 **Proton Mail Bridge** : réglages et certificat local pris en charge, pas testé (Bridge n'était pas lancé)
-- ❌ Relève des messages (`SELECT`, `UID FETCH`, MIME), cache SQLite + FTS5, `IDLE`
-- ❌ Lecture HTML protégée, lecture épurée
+- ❌ `IDLE` (les nouveaux messages arrivent à ⌘R ou au retour dans l'app), messages plus anciens que les 300 derniers
+- ❌ Lecture épurée, archiver / supprimer, épingler
 - ❌ Compositeur (éditeur de Void Notes), envoi, envoi différé
 - ❌ Ponts avec Void et Void Notes, `mailto:` (déclaré dans `Config/Info.plist`, pas encore traité)
 - ❌ iPhone
@@ -99,9 +113,9 @@ Réglages → Apparence : thème, couleur d'accent et teinte de la fenêtre, **l
 "build/DerivedData/Build/Products/Debug/Void Mail.app/Contents/MacOS/Void Mail" -selfTest YES
 ```
 
-49 vérifications avec `-network YES` (45 sans). Le code de sortie est le nombre d'échecs. Le test ne touche ni aux vrais comptes, ni aux préférences, ni au trousseau.
+86 vérifications avec `-network YES` (82 sans). Le code de sortie est le nombre d'échecs. Le test ne touche ni aux vrais comptes, ni aux préférences, ni au trousseau.
 
-Autres arguments (builds Debug) : `-demo YES` (deux comptes de démonstration), `-addAccount YES -address <adresse>` (la feuille ouverte), `-theme light -accent pink -tint peach` (l'apparence), `-snapshot YES` (une capture de la fenêtre, ou de la feuille ouverte, en PNG base64 sur la sortie standard, la seule sortie que le bac à sable laisse lire) :
+Autres arguments (builds Debug) : `-demo YES` (deux comptes de démonstration et leur Réception ; `-openUID 101` ou `103` ouvre un message texte ou HTML), `-addAccount YES -address <adresse>` (la feuille ouverte), `-theme light -accent pink -tint peach` (l'apparence), `-snapshot YES` (une capture de la fenêtre, ou de la feuille ouverte, en PNG base64 sur la sortie standard, la seule sortie que le bac à sable laisse lire) :
 
 ```bash
 "build/DerivedData/Build/Products/Debug/Void Mail.app/Contents/MacOS/Void Mail" -demo YES -snapshot YES | sed -n 's/^SNAPSHOT://p' | base64 -d > fenetre.png
@@ -112,9 +126,9 @@ Autres arguments (builds Debug) : `-demo YES` (deux comptes de démonstration), 
 | Dossier | Contenu |
 |---|---|
 | `Shared/App` | Préférences (`AppSettings`), palette (`Theme`), teinte de la fenêtre (`ChromeTint`) : repris de Void Notes |
-| `Shared/Mail` | Compte, serveur, boîte (`MailAccount`), hébergeurs (`ProviderDirectory`), trousseau (`Keychain`), OAuth (`OAuth`), connexion ligne à ligne et SASL (`MailStream`), `IMAPClient`, `SMTPClient`, comptes sur disque et vérification d'un compte (`AccountStore`), état de la fenêtre (`MailModel`) |
+| `Shared/Mail` | Compte, serveur, boîte (`MailAccount`), hébergeurs (`ProviderDirectory`), trousseau (`Keychain`), OAuth (`OAuth`), connexion ligne à ligne et SASL (`MailStream`), `IMAPClient` et ses réponses (`IMAPValue`), `SMTPClient`, MIME (`MIME`), cache et recherche (`MailCache`), connexion par compte et relève (`AccountSession`), comptes sur disque et vérification d'un compte (`AccountStore`), état de la fenêtre (`MailModel`), dates (`MailDate`) |
 | `Shared/Debug` | Arguments de lancement et comptes de démonstration (builds Debug) |
 | `VoidMail/App` | Mac : point d'entrée, menus |
-| `VoidMail/UI` | Mac : fenêtre, barre latérale et comptes (`MailboxSidebar`), ajout d'un compte (`AccountSheet`), cadre de la fenêtre (`AppKitBridges`) |
+| `VoidMail/UI` | Mac : fenêtre, barre latérale et comptes (`MailboxSidebar`), liste (`MessageList`), message et HTML protégé (`MessageView`), ajout d'un compte (`AccountSheet`), cadre de la fenêtre (`AppKitBridges`) |
 | `VoidMail/Settings` | Mac : réglages |
 | `VoidMail/Debug` | Mac : auto-test (builds Debug uniquement) |

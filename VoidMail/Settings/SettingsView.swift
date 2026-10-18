@@ -39,11 +39,11 @@ struct SettingsView: View {
         .confirmationDialog("Retirer « \(pendingRemoval?.address ?? "") » ?",
                             isPresented: Binding(get: { pendingRemoval != nil }, set: { if !$0 { pendingRemoval = nil } })) {
             Button("Retirer le compte", role: .destructive) {
-                if let account = pendingRemoval { store.remove(account) }
+                if let account = pendingRemoval { model.forget(account) }
             }
             Button("Annuler", role: .cancel) { pendingRemoval = nil }
         } message: {
-            Text("Son mot de passe est retiré du trousseau. Les messages restent sur le serveur.")
+            Text("Son mot de passe est retiré du trousseau et ses messages du cache de ce Mac. Ils restent sur le serveur.")
         }
     }
 }

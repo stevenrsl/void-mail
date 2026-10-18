@@ -22,7 +22,7 @@ struct MainWindowView: View {
             HStack(spacing: 0) {
                 // No account yet: one sheet, and the one thing to do.
                 if !store.accounts.isEmpty {
-                    MessageListColumn()
+                    MessageList()
                         .frame(width: 320)
                     Rectangle().fill(Theme.stroke).frame(width: 1)
                 }
@@ -48,6 +48,16 @@ struct MainWindowView: View {
                 .environment(store)
                 .environment(model)
         }
+        .task {
+            #if DEBUG
+            if DebugLaunch.isDemo { await model.loadDemo() }
+            #endif
+            await model.refresh()
+        }
+        // Back to the app: what came in meanwhile.
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            Task { await model.refresh() }
+        }
         .alert("Opération impossible", isPresented: Binding(get: { store.errorMessage != nil }, set: { if !$0 { store.errorMessage = nil } })) {
             Button("OK") {}
         } message: {
@@ -69,45 +79,21 @@ struct MainWindowView: View {
     }
 }
 
-/// The open mailbox's messages. Fetching them is the next step: until then, the column says
-/// honestly what it will hold.
-private struct MessageListColumn: View {
-    @Environment(MailModel.self) private var model
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if let account = model.currentAccount, let mailbox = account.mailboxes.first(where: { $0.path == model.selectedMailbox }) {
-                Text(mailbox.displayName)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(Theme.primaryText)
-                    .padding(.horizontal, 18)
-                    .padding(.top, 16)
-                Text(account.address)
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(Theme.secondaryText)
-                    .padding(.horizontal, 18)
-                    .padding(.top, 2)
-            }
-            Spacer()
-            if model.currentAccount != nil {
-                Text("La relève des messages arrive à l'étape suivante.")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.secondaryText)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: .infinity)
-                    .padding(24)
-            }
-            Spacer()
-        }
-    }
-}
-
 /// No message open: the mark, and the one thing to do.
 private struct MessagePane: View {
     @Environment(MailModel.self) private var model
     @Environment(AccountStore.self) private var store
 
     var body: some View {
+        if let summary = model.selectedMessage {
+            MessageView(summary: summary)
+                .id(summary.id)
+        } else {
+            nothingOpen
+        }
+    }
+
+    private var nothingOpen: some View {
         VStack(spacing: 14) {
             VoidLogo(size: 44).opacity(0.9)
             Text(store.accounts.isEmpty ? "Aucun compte" : "Aucun message ouvert")

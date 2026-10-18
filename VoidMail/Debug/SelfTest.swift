@@ -21,6 +21,17 @@ enum SelfTest {
         accountsOnDisk()
         keychain()
         oauth()
+        imapValues()
+        mime()
+        dates()
+        htmlPolicy()
+        Task {
+            await cacheChecks()
+            afterOffline()
+        }
+    }
+
+    private static func afterOffline() {
         if UserDefaults.standard.bool(forKey: "network") {
             Task {
                 await network()
@@ -60,6 +71,141 @@ enum SelfTest {
         } catch MailError.authentication {
             check(true, "un mauvais mot de passe est refusé, avec un message clair")
         } catch { check(false, "un mauvais mot de passe : \(error.localizedDescription)") }
+    }
+
+    private static func imapValues() {
+        print("Réponses FETCH")
+        let header = Data("* 3 FETCH (UID 42 FLAGS (\\Seen \\Flagged) INTERNALDATE \"17-Oct-2026 09:30:00 +0200\" RFC822.SIZE 2048 ENVELOPE (\"Fri, 17 Oct 2026 09:29:58 +0200\" {12}\r\n".utf8)
+        let literal = Data("Caf\u{E9} cr\u{E8}me".utf8).prefix(12)
+        var line = IMAPLine(data: header)
+        line.data.removeLast(2)
+        line.literalStarts.insert(line.data.count)
+        line.data.append(literal)
+        line.data.append(Data(" ((\"=?utf-8?Q?Camille_Moreau?=\" NIL \"camille\" \"exemple.fr\")) NIL NIL ((NIL NIL \"steven\" \"icloud.com\")) NIL NIL NIL \"<a@b>\"))".utf8))
+        let envelope = MessageEnvelope(fetch: line)
+        check(envelope?.uid == 42 && envelope?.flags == ["\\Seen", "\\Flagged"] && envelope?.size == 2048, "UID, drapeaux, taille")
+        check(envelope?.subject == "Café crème", "objet en littéral {n}, octets UTF-8")
+        check(envelope?.from.first == MailAddress(name: "Camille Moreau", address: "camille@exemple.fr"), "expéditeur, nom encodé décodé")
+        check(envelope?.to.first?.address == "steven@icloud.com" && envelope?.messageID == "<a@b>", "destinataire, Message-ID")
+        check(envelope?.date == MessageEnvelope.internalDate("17-Oct-2026 09:30:00 +0200"), "date d'arrivée du serveur")
+        let body = IMAPLine("* 1 FETCH (UID 7 BODY[] NIL)").values
+        check(body.count == 4 && body[3].pairs["BODY[]"] == .nilValue, "BODY[] reconnu comme une clé, NIL")
+        check(IMAPLine("* 1 FETCH (BODY[HEADER.FIELDS (DATE FROM)] \"x\")").values[3].pairs.keys.contains("BODY[HEADER.FIELDS (DATE FROM)]"), "crochets avec espaces dans un atome")
+        check(IMAPClient.code("UIDVALIDITY", in: "* OK [UIDVALIDITY 3857529045] UIDs valid") == 3857529045, "UIDVALIDITY")
+    }
+
+    private static func mime() {
+        print("MIME")
+        check(MIMEHeader.decodeWords("=?utf-8?B?w4l0w6k=?= =?utf-8?Q?_=C3=A0_Lisbonne?=") == "Été à Lisbonne", "mots encodés B et Q, accolés")
+        check(MIMEHeader.decodeWords("=?iso-8859-1?Q?R=E9union?= demain") == "Réunion demain", "Latin-1")
+        let (type, parameters) = MIMEHeader.parameters("attachment; filename*=utf-8''r%C3%A9sum%C3%A9.pdf; size=12")
+        check(type == "attachment" && parameters["filename"] == "résumé.pdf", "nom de fichier RFC 2231")
+        let (_, continued) = MIMEHeader.parameters("application/pdf; name*0=\"long\"; name*1=\"-nom.pdf\"")
+        check(continued["name"] == "long-nom.pdf", "suite de paramètres RFC 2231")
+        let raw = """
+        From: =?utf-8?Q?Jos=C3=A9?= <jose@exemple.fr>
+        To: "Moreau, Camille" <camille@exemple.fr>, b@c.fr
+        Subject: Devis
+        Content-Type: multipart/mixed; boundary="mix"
+
+        --mix
+        Content-Type: multipart/alternative; boundary=alt
+
+        --alt
+        Content-Type: text/plain; charset=iso-8859-1
+        Content-Transfer-Encoding: quoted-printable
+
+        Voici le devis, =E0 bient=F4t.=
+         Fin.
+        --alt
+        Content-Type: multipart/related; boundary=rel
+
+        --rel
+        Content-Type: text/html; charset=utf-8
+
+        <p>Voici <img src="cid:logo@x"></p>
+        --rel
+        Content-Type: image/png
+        Content-ID: <logo@x>
+        Content-Transfer-Encoding: base64
+
+        iVBORw0KGgo=
+        --rel--
+        --alt--
+        --mix
+        Content-Type: application/pdf; name="devis.pdf"
+        Content-Disposition: attachment; filename="devis.pdf"
+        Content-Transfer-Encoding: base64
+
+        JVBERi0xLjQK
+        --mix--
+        """.replacingOccurrences(of: "\n", with: "\r\n")
+        let message = MailMessage(raw: Data(raw.utf8))
+        check(message.from.first?.name == "José", "expéditeur décodé")
+        check(message.to.count == 2 && message.to.first?.name == "Moreau, Camille", "virgule entre guillemets dans un nom")
+        check(message.plainText?.hasPrefix("Voici le devis, à bientôt. Fin.") == true, "texte quoted-printable en Latin-1, coupure douce")
+        check(message.html?.contains("data:image/png;base64,iVBORw0KGgo=") == true, "image intégrée (cid:) en data:")
+        check(message.attachments.map(\.filename) == ["devis.pdf"] && message.attachments.first?.data == Data("%PDF-1.4\n".utf8), "pièce jointe base64")
+        check(!message.hasRemoteImages, "pas d'image distante")
+        check(MailMessage(raw: Data("Content-Type: text/html\r\n\r\n<img src=\"https://t.test/p.gif\">".utf8)).hasRemoteImages, "pixel espion repéré")
+        check(MailMessage(raw: Data("Subject: x\r\n\r\nCorps".utf8)).plainText == "Corps", "message sans Content-Type")
+    }
+
+    private static func dates() {
+        print("Dates")
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Europe/Paris")!
+        let now = calendar.date(from: DateComponents(year: 2026, month: 10, day: 18, hour: 19))!
+        func at(_ day: Int, _ hour: Int, year: Int = 2026, month: Int = 10) -> Date { calendar.date(from: DateComponents(year: year, month: month, day: day, hour: hour, minute: 5))! }
+        check(MailDate.listLabel(at(18, 9), now: now, calendar: calendar).contains("09:05") || MailDate.listLabel(at(18, 9), now: now, calendar: calendar).contains("9:05"), "aujourd'hui : l'heure")
+        check(MailDate.listLabel(at(17, 9), now: now, calendar: calendar) == "hier", "hier")
+        check(MailDate.listLabel(at(14, 9), now: now, calendar: calendar) == "mercredi", "dans la semaine : le jour")
+        check(MailDate.listLabel(at(1, 9), now: now, calendar: calendar) == "1 oct.", "plus tôt : le jour et le mois")
+        check(MailDate.listLabel(at(1, 9, year: 2025), now: now, calendar: calendar) == "1 oct. 2025", "une autre année : l'année")
+    }
+
+    private static func htmlPolicy() {
+        print("HTML protégé")
+        let blocked = HTMLMessageView.page("<head><meta http-equiv=\"Content-Security-Policy\" content=\"img-src *\"></head>", allowsRemote: false)
+        check(blocked.hasPrefix("<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; img-src data: cid:;"), "la politique de l'app passe avant celle du message")
+        check(HTMLMessageView.page("", allowsRemote: true).contains("img-src data: cid: https: http:"), "« Charger les images » les autorise")
+    }
+
+    private static func cacheChecks() async {
+        print("Cache et recherche")
+        let cache = MailCache(path: ":memory:")
+        let account = UUID()
+        func envelope(_ uid: Int, _ subject: String, seen: Bool = false) -> MessageEnvelope {
+            MessageEnvelope(uid: uid, flags: seen ? ["\\Seen"] : [], date: Date(timeIntervalSince1970: Double(uid) * 1000), size: 10, subject: subject,
+                            from: [MailAddress(name: "Camille Moreau", address: "camille@exemple.fr")], to: [], cc: [], messageID: nil)
+        }
+        await cache.checkValidity(account: account, mailbox: "INBOX", validity: 1)
+        await cache.insert([envelope(1, "Réunion lundi"), envelope(2, "Facture d'octobre", seen: true), envelope(3, "Lisbonne")], account: account, mailbox: "INBOX")
+        var list = await cache.messages(account: account, mailbox: "INBOX")
+        check(list.map(\.uid) == [3, 2, 1], "plus récent d'abord")
+        let highest = await cache.highestUID(account: account, mailbox: "INBOX")
+        check(highest == 3 && list[1].isSeen, "plus grand UID, drapeau lu")
+        let accentless = await cache.search(account: account, text: "reunion")
+        check(accentless.map(\.uid) == [1], "recherche sans accents")
+        let prefixes = await cache.search(account: account, text: "fact oct")
+        check(prefixes.map(\.uid) == [2], "début des mots, plusieurs mots")
+        let bySender = await cache.search(account: account, text: "moreau")
+        check(bySender.count == 3, "recherche par expéditeur")
+        await cache.storeBody(Data("x".utf8), text: "Le train pour Sintra part de Rossio", message: list[0].id)
+        let inText = await cache.search(account: account, text: "sintra")
+        check(inText.map(\.uid) == [3], "recherche dans le texte d'un message lu")
+        let kept = await cache.body(message: list[0].id)
+        check(kept == Data("x".utf8), "message gardé")
+        await cache.updateFlags([1: ["\\Seen"]], account: account, mailbox: "INBOX")
+        await cache.removeMessages(account: account, mailbox: "INBOX", uids: [2])
+        list = await cache.messages(account: account, mailbox: "INBOX")
+        check(list.map(\.uid) == [3, 1] && list[1].isSeen, "drapeaux mis à jour, message disparu du serveur retiré")
+        let removed = await cache.search(account: account, text: "facture")
+        check(removed.isEmpty, "retiré aussi de la recherche")
+        await cache.checkValidity(account: account, mailbox: "INBOX", validity: 2)
+        let renumbered = await cache.messages(account: account, mailbox: "INBOX")
+        let forgottenBody = await cache.body(message: list[0].id)
+        check(renumbered.isEmpty && forgottenBody == nil, "UIDVALIDITY changé : la boîte est oubliée")
     }
 
     private static func check(_ condition: @autoclosure () -> Bool, _ label: String) {
