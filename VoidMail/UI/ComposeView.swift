@@ -69,7 +69,7 @@ struct ComposeView: View {
             }
 
             ComposeEditor(draft: draft, accent: settings.accent, checksSpelling: settings.checksSpelling, checksGrammar: settings.checksGrammar,
-                          focusesText: draft.inReplyTo != nil || !draft.to.isEmpty, editor: $editor) { content in
+                          focusesText: focusesText(draft), editor: $editor) { content in
                 outbox.update(id) { $0.content = content }
             }
             .background(MessageSurface(drawsFrame: false))
@@ -109,6 +109,14 @@ struct ComposeView: View {
             Text(problem ?? "")
         }
         .onDisappear { outbox.windowClosed(id) }
+    }
+
+    /// A reply, or a message with its recipient already there: the text takes the keyboard.
+    private func focusesText(_ draft: Draft) -> Bool {
+        #if DEBUG
+        if UserDefaults.standard.string(forKey: "composeTo") != nil { return false }
+        #endif
+        return draft.inReplyTo != nil || !draft.to.isEmpty
     }
 
     private func send() {
@@ -164,18 +172,21 @@ private struct AddressField<Accessory: View>: View {
     @State private var highlighted = 0
 
     var body: some View {
-        FieldRow(label: label) {
-            TextField("", text: $text)
-                .textFieldStyle(.plain)
-                .font(.system(size: 13))
-                .focused($focused)
-                .onKeyPress(.downArrow) { move(1) }
-                .onKeyPress(.upArrow) { move(-1) }
-                .onKeyPress(.tab) { complete() }
-                .onSubmit { _ = complete() }
-            accessory
-        }
-        .overlay(alignment: .topLeading) {
+        // The suggestions go under the field, in the layout: the editor below is an AppKit view,
+        // drawn over anything SwiftUI would float above it.
+        VStack(alignment: .leading, spacing: 0) {
+            FieldRow(label: label) {
+                TextField("", text: $text)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 13))
+                    .focused($focused)
+                    .onKeyPress(.downArrow) { move(1) }
+                    .onKeyPress(.upArrow) { move(-1) }
+                    .onKeyPress(.tab) { complete() }
+                    .onKeyPress(.escape) { suggestions.isEmpty ? .ignored : { suggestions = []; return .handled }() }
+                    .onSubmit { _ = complete() }
+                accessory
+            }
             if focused, !suggestions.isEmpty {
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(Array(suggestions.enumerated()), id: \.offset) { index, address in
@@ -195,15 +206,17 @@ private struct AddressField<Accessory: View>: View {
                         .buttonStyle(.plain)
                     }
                 }
-                .padding(4)
-                .frame(width: 360)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Theme.surface).shadow(color: Theme.shadow.opacity(0.3), radius: 10, y: 3))
-                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.stroke))
-                .offset(x: 50, y: 34)
+                .padding(.vertical, 4)
+                .padding(.leading, 40)
+                .transition(.opacity)
             }
         }
-        .zIndex(focused ? 1 : 0)
-        .task(id: text) {
+        .animation(Theme.quick, value: suggestions.isEmpty)
+        #if DEBUG
+        // `-composeTo ca`: the field « À » focused with that typed, for the snapshots.
+        .onAppear { if label == "À", UserDefaults.standard.string(forKey: "composeTo") != nil { focused = true } }
+        #endif
+        .task(id: "\(text)\(focused)") {
             guard focused else { suggestions = []; return }
             let found = await outbox.suggestions(account: account, for: text)
             // Already written in the field: not offered again.
