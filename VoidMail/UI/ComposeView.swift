@@ -373,7 +373,9 @@ private struct ComposeEditor: NSViewRepresentable {
         textView.attachData = { data, name in Self.write(data, named: name, into: directory) }
         textView.load(draft.content)
         // A reply: the cursor before the quote, on the blank line left for it.
-        if focusesText { textView.setSelectedRange(NSRange(location: 0, length: 0)) }
+        // A new message or a reply: the cursor on the first line, above the signature and the
+        // quote. A draft taken up again: at its end, where it was left.
+        if draft.replaces == nil { textView.setSelectedRange(NSRange(location: 0, length: 0)) }
         textView.takesFocusWhenShown = focusesText
         handle.editor = textView
         textView.onTyping = { [handle] in if !handle.writing { handle.writing = true } }

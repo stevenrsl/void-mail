@@ -149,6 +149,15 @@ struct MailAccount: Codable, Identifiable, Hashable {
     var auth: MailAuth
     var mailboxes: [Mailbox] = []
     var created = Date()
+    /// Written in Markdown (`**gras**`, `[lien](https://…)`), added under new messages and
+    /// replies. Optional: files of before the signatures read as they are.
+    var signature: String?
+
+    /// The signature in the editor's format; nil when there is none.
+    var signatureContent: NoteContent? {
+        guard let signature, !signature.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return NoteMarkdown.content(fromMarkdown: signature.trimmingCharacters(in: .newlines))
+    }
 
     init(name: String, address: String, preset: ProviderPreset) {
         self.name = name

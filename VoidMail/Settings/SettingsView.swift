@@ -24,6 +24,7 @@ struct SettingsView: View {
                         Text(account.address)
                         Text("\(account.auth.label) · \(account.imap.host)")
                     }
+                    SignatureField(account: account)
                 }
                 Button("Ajouter un compte…") { model.addingAccount = true }
             } header: {
@@ -44,6 +45,32 @@ struct SettingsView: View {
             Button("Annuler", role: .cancel) { pendingRemoval = nil }
         } message: {
             Text("Son mot de passe est retiré du trousseau et ses messages du cache de ce Mac. Ils restent sur le serveur.")
+        }
+    }
+}
+
+/// The account's signature, in Markdown, kept as one types.
+private struct SignatureField: View {
+    let account: MailAccount
+    @Environment(AccountStore.self) private var store
+    @State private var text = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Signature").font(.system(size: 12)).foregroundStyle(.secondary)
+            TextField("Signature", text: $text, prompt: Text("Steven Roussel\n[stevenrsl.eu](https://stevenrsl.eu)"), axis: .vertical)
+                .lineLimit(2...6)
+                .font(.system(size: 12, design: .monospaced))
+                .textFieldStyle(.roundedBorder)
+                .labelsHidden()
+            Text("Sous les nouveaux messages et les réponses. Markdown : **gras**, *italique*, [lien](https://…).")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        .onAppear { text = account.signature ?? "" }
+        .onChange(of: text) { _, value in
+            guard var current = store.account(account.id), (current.signature ?? "") != value else { return }
+            current.signature = value.isEmpty ? nil : value
+            store.save(current)
         }
     }
 }

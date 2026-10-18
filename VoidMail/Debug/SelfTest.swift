@@ -228,6 +228,17 @@ enum SelfTest {
         let all = Draft.reply(to: original, summary: summary, account: account, all: true)
         check(all.to.contains("julien@exemple.fr") && !all.to.contains("hello@stevenrsl.eu") && all.cc == "ana@exemple.fr", "répondre à tous, sans soi-même")
         check(Draft.reply(to: original, summary: MessageSummary(id: 1, account: account.id, mailbox: "INBOX", uid: 1, date: Date(), subject: "Re: Sintra", sender: summary.sender, recipients: "", flags: [], size: 0), account: account, all: false).subject == "Re: Sintra", "pas de « Re: Re: »")
+        var signedAccount = account
+        signedAccount.signature = "**Steven**\n[stevenrsl.eu](https://stevenrsl.eu)"
+        let fresh = Draft.signed(signedAccount)
+        check(fresh.text.hasPrefix("\n\nSteven") && fresh.runs.contains { $0.bold == true } && fresh.runs.contains { $0.link == "https://stevenrsl.eu" }, "signature sous un nouveau message, mise en forme")
+        let signedReply = Draft.reply(to: original, summary: summary, account: signedAccount, all: false)
+        let signatureEnd = (signedReply.content.text as NSString).range(of: "stevenrsl.eu").location
+        let quoteStart = (signedReply.content.text as NSString).range(of: "On part").location
+        check(signatureEnd < quoteStart && signedReply.content.runs.contains { $0.block == .quote && $0.start == quoteStart }, "réponse : signature au-dessus de la citation, citation à sa place")
+        check(Draft.signed(account) == NoteContent(), "sans signature : rien")
+        let oldJSON = Data(#"[{"id":"6F1E2C3A-0000-0000-0000-000000000000","name":"","address":"a@b.fr","username":"a@b.fr","imap":{"host":"h","port":993,"security":"tls"},"smtp":{"host":"h","port":465,"security":"tls"},"auth":{"password":{}},"mailboxes":[],"created":0}]"#.utf8)
+        check((try? JSONDecoder().decode([MailAccount].self, from: oldJSON))?.first?.signature == nil, "comptes d'avant les signatures relus")
         // A draft saved, then continued: the same fields, the same formatting.
         var saved = Draft(account: account.id, to: "Camille <camille@exemple.fr>", bcc: "j@e.fr", subject: "Programme",
                           content: NoteMarkdown.content(fromMarkdown: "Pour samedi :\n\n- le train de **9 h 11**\n- [ ] Pena\n\n> cité"))

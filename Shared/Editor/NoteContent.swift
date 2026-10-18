@@ -78,3 +78,19 @@ enum NoteText {
     }
 
 }
+
+extension NoteContent {
+    /// This text followed by another, the other's formatting moved along.
+    func appending(_ other: NoteContent) -> NoteContent {
+        let offset = (text as NSString).length
+        return NoteContent(text: text + other.text, runs: runs + other.runs.map { run in
+            var moved = run
+            moved.start += offset
+            return moved
+        })
+    }
+
+    init(plain: String) {
+        self.init(text: plain, runs: [])
+    }
+}

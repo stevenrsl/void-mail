@@ -28,7 +28,7 @@ final class Outbox {
 
     func newDraft(account: MailAccount?, to: String = "", subject: String = "", body: String = "") -> UUID? {
         guard let account = account ?? store.accounts.first else { return nil }
-        return add(Draft(account: account.id, to: to, subject: subject, content: NoteContent(text: body, runs: [])))
+        return add(Draft(account: account.id, to: to, subject: subject, content: Draft.signed(account, body: body)))
     }
 
     func add(_ draft: Draft) -> UUID {

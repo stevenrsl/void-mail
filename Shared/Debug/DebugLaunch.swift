@@ -16,6 +16,7 @@ enum DebugLaunch {
         var personal = MailAccount(name: "Steven", address: "steven@icloud.com", preset: ProviderDirectory.preset(for: "steven@icloud.com"))
         personal.mailboxes = ["INBOX", "Archive", "Sent Messages", "Drafts", "Deleted Messages", "Junk", "All Mail", "Factures", "Voyages", "Voyages/Portugal"]
             .map { Mailbox(path: $0, delimiter: "/", attributes: Mailbox.guessedAttributes(for: $0)) }
+        personal.signature = "**Steven**\nPhotographe · [stevenrsl.eu](https://stevenrsl.eu)"
         var work = MailAccount(name: "Studio", address: "hello@studio.test", preset: ProviderDirectory.preset(for: "hello@studio.test"))
         work.mailboxes = ["INBOX", "Archives", "Sent", "Drafts", "Trash"]
             .map { Mailbox(path: $0, delimiter: ".", attributes: Mailbox.guessedAttributes(for: $0)) }

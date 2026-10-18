@@ -75,7 +75,7 @@ struct Draft: Identifiable, Equatable {
         }
         var draft = Draft(account: account.id, to: format(to), cc: format(cc), subject: prefixed("Re", summary.subject))
         let intro = "Le \(introDate(message.date ?? summary.date)), \(sender.display) a écrit :"
-        draft.content = quoted(intro: intro, text: message.readableText)
+        draft.content = signed(account).appending(quoted(intro: intro, text: message.readableText))
         draft.inReplyTo = message.messageID
         draft.references = message.references + [message.messageID].compactMap { $0 }
         return draft
@@ -105,13 +105,20 @@ struct Draft: Identifiable, Equatable {
             "À : \(format(message.to))",
         ] + (message.cc.isEmpty ? [] : ["Cc : \(format(message.cc))"])
         let text = "\n\n" + header.joined(separator: "\n") + "\n\n" + message.readableText.replacingOccurrences(of: "\r\n", with: "\n")
-        draft.content = NoteContent(text: text, runs: [])
+        draft.content = signed(account).appending(NoteContent(plain: text))
         draft.forwardedFiles = message.attachments.map { File(name: $0.filename, data: $0.data, contentType: $0.contentType) }
         draft.references = message.references + [message.messageID].compactMap { $0 }
         return draft
     }
 
-    /// The reply's text: a blank line to write in, the intro, the original as a quote.
+    /// What a new message starts with: a line to write on, then the account's signature.
+    static func signed(_ account: MailAccount, body: String = "") -> NoteContent {
+        guard let signature = account.signatureContent else { return NoteContent(plain: body) }
+        return NoteContent(plain: body + "\n\n").appending(signature)
+    }
+
+    /// The reply's text: the intro, the original as a quote (after `signed`, which leaves the
+    /// line to write on).
     private static func quoted(intro: String, text: String) -> NoteContent {
         // CRLF is one line break, not two.
         let lines = text.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
