@@ -286,9 +286,13 @@ struct MailMessage {
 
     var subject: String
     var from: [MailAddress]
+    var replyTo: [MailAddress]
     var to: [MailAddress]
     var cc: [MailAddress]
     var date: Date?
+    var messageID: String?
+    /// The thread it answers, oldest first (its References header).
+    var references: [String]
     var plainText: String?
     var html: String?
     var attachments: [Attachment]
@@ -299,7 +303,10 @@ struct MailMessage {
         from = root.header("From").map(MailAddress.parseHeader) ?? []
         to = root.header("To").map(MailAddress.parseHeader) ?? []
         cc = root.header("Cc").map(MailAddress.parseHeader) ?? []
+        replyTo = root.header("Reply-To").map(MailAddress.parseHeader) ?? []
         date = root.header("Date").flatMap(MIMEHeader.date)
+        messageID = root.header("Message-ID")?.trimmingCharacters(in: .whitespaces)
+        references = (root.header("References") ?? "").split(whereSeparator: \.isWhitespace).map(String.init).filter { $0.hasPrefix("<") }
         var plain: String?, html: String?
         var attachments: [Attachment] = []
         var inline: [String: (String, Data)] = [:]
@@ -346,6 +353,24 @@ struct MailMessage {
             .replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
             .replacingOccurrences(of: "&nbsp;", with: " ")
             .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+    }
+
+    /// The text to quote in a reply or a forward: the plain version, else the HTML read as text,
+    /// its paragraphs and line breaks kept.
+    var readableText: String {
+        if let plainText { return plainText }
+        guard let html else { return "" }
+        var text = html.replacingOccurrences(of: "<(style|script|head)[^>]*>[\\s\\S]*?</\\1>", with: "", options: [.regularExpression, .caseInsensitive])
+        text = text.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        text = text.replacingOccurrences(of: "<br\\s*/?>", with: "\n", options: [.regularExpression, .caseInsensitive])
+        text = text.replacingOccurrences(of: "</(p|div|li|h[1-6]|tr|blockquote)>", with: "\n", options: [.regularExpression, .caseInsensitive])
+        text = text.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+        for (entity, character) in ["&nbsp;": " ", "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": "\"", "&#39;": "'", "&rsquo;": "’", "&eacute;": "é", "&egrave;": "è", "&agrave;": "à"] {
+            text = text.replacingOccurrences(of: entity, with: character)
+        }
+        return text.components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+            .joined(separator: "\n").replacingOccurrences(of: "\n{3,}", with: "\n\n", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// The HTML loads images from the Internet (pixels that tell the sender the message was read).

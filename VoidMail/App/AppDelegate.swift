@@ -18,8 +18,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // sandbox lets the app write nowhere a script can read), then quit; the sheet
         // rather than the window when one is open.
         if UserDefaults.standard.bool(forKey: "snapshot") {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                guard let main = NSApp.windows.first(where: { $0.isVisible && $0.contentView != nil }),
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                guard let main = NSApp.orderedWindows.first(where: { $0.isVisible && $0.contentView != nil }),
                       let view = (main.attachedSheet ?? main).contentView?.superview,
                       let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { exit(1) }
                 view.cacheDisplay(in: view.bounds, to: rep)
@@ -30,12 +30,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #endif
     }
 
-    /// A gesture still waiting for its undo delay reaches the server before the app goes.
+    /// A gesture or a message still waiting for its undo delay reaches the server before the app goes.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         MainActor.assumeIsolated {
-            guard MailModel.shared.pending != nil else { return .terminateNow }
+            guard MailModel.shared.pending != nil || Outbox.shared.sending != nil else { return .terminateNow }
             Task { @MainActor in
                 await MailModel.shared.commitPendingNow()
+                await Outbox.shared.flushSendingNow()
                 NSApp.reply(toApplicationShouldTerminate: true)
             }
             return .terminateLater

@@ -166,6 +166,26 @@ final class IMAPClient {
         }
     }
 
+    /// Puts a whole message in a mailbox (a copy in Envoyés, a draft in Brouillons).
+    func append(_ data: Data, to mailbox: String, flags: [String]) async throws {
+        tag += 1
+        let label = "v\(tag)"
+        let flagList = flags.isEmpty ? "" : "(\(flags.joined(separator: " "))) "
+        try await stream.send("\(label) APPEND \(Self.quoted(ModifiedUTF7.encode(mailbox))) \(flagList){\(data.count)}")
+        let continuation = try await stream.readLine()
+        guard continuation.hasPrefix("+") else { throw MailError.unexpected(continuation) }
+        var payload = data
+        payload.append(Data("\r\n".utf8))
+        try await stream.sendData(payload)
+        while true {
+            let line = try await stream.readLine()
+            if line.hasPrefix(label + " ") {
+                guard line.dropFirst(label.count + 1).uppercased().hasPrefix("OK") else { throw MailError.unexpected(line) }
+                return
+            }
+        }
+    }
+
     /// Deletes messages for good (from the trash).
     func delete(uids: [Int]) async throws {
         guard !uids.isEmpty else { return }

@@ -1,10 +1,10 @@
 # Void Mail
 
-**Un courrier qui s'efface derrière le message.** Version **0.0.4** (préversion : lire et trier). Void Mail est le troisième compagnon de Void et de [Void Notes](../Void%20Notes) : même palette, même chrome sombre, mêmes réglages d'apparence, rien de superflu à l'écran. Le projet et ses choix sont décrits dans [CONCEPT.md](CONCEPT.md).
+**Un courrier qui s'efface derrière le message.** Version **0.0.5** (préversion : lire, trier, écrire). Void Mail est le troisième compagnon de Void et de [Void Notes](../Void%20Notes) : même palette, même chrome sombre, mêmes réglages d'apparence, rien de superflu à l'écran. Le projet et ses choix sont décrits dans [CONCEPT.md](CONCEPT.md).
 
 - Swift + SwiftUI, AppKit là où c'est utile (fenêtre, barre de titre)
 - Mac : Apple silicon, macOS 14 minimum. iPhone : plus tard, sur `Shared/`
-- **≈ 1,9 Mo** (build Release), aucune dépendance externe (Foundation, Security, CryptoKit, AuthenticationServices, WebKit, SQLite du système)
+- **≈ 2,5 Mo** (build Release), aucune dépendance externe (Foundation, Security, CryptoKit, AuthenticationServices, WebKit, SQLite du système)
 - Aucun compte Void, aucun serveur intermédiaire : l'app parle directement aux serveurs IMAP et SMTP de l'hébergeur
 
 ![Void Mail, thème sombre (comptes de démonstration)](docs/screenshots/sombre.png)
@@ -12,6 +12,10 @@
 ![Un message HTML, son pixel espion bloqué](docs/screenshots/html-protege.png)
 
 ![Un message archivé, le temps de l'annuler](docs/screenshots/geste-archive.png)
+
+| | |
+|---|---|
+| ![Actions au survol d'un message](docs/screenshots/actions-survol.png) | ![Une réponse, dans l'éditeur de Void Notes](docs/screenshots/ecrire-reponse.png) |
 
 | | |
 |---|---|
@@ -44,7 +48,7 @@ L'icône est générée par script (`swift scripts/make-icon.swift`) : une envel
 
 ## Comptes
 
-Réglages (⌘,) → Comptes, ou ⇧⌘N, ou le « + » en bas de la barre latérale. On tape l'adresse, l'app en déduit les serveurs (table locale : rien ne quitte le Mac pour les trouver). « Se connecter » joint les deux serveurs, se connecte et liste les boîtes **avant** de garder quoi que ce soit ; une étape qui échoue dit pourquoi, en clair.
+Réglages (⌘,) → Comptes, ou ⌥⌘N, ou le « + » en bas de la barre latérale. On tape l'adresse, l'app en déduit les serveurs (table locale : rien ne quitte le Mac pour les trouver). « Se connecter » joint les deux serveurs, se connecte et liste les boîtes **avant** de garder quoi que ce soit ; une étape qui échoue dit pourquoi, en clair.
 
 | Hébergeur | Connexion | Serveurs |
 |---|---|---|
@@ -79,8 +83,8 @@ Réglages → Apparence : thème, couleur d'accent et teinte de la fenêtre, **l
 ## Lire
 
 - **Compteurs** : les non lus à droite de chaque boîte (pas pour Envoyés, Brouillons, Corbeille ni « Tous les messages »), et sous le nom de la boîte ouverte « 12 non lus · 1 284 messages » — les chiffres du serveur (STATUS), relus à chaque relève ; lire un message les met à jour aussitôt.
-- **La liste** : expéditeur et date (« 15:41 », « hier », « vendredi », « 2 oct. »), objet ; non lu en clair avec un point d'accent, lu en gris. ↑ ↓ ou J K pour passer d'un message à l'autre, U (ou ⇧⌘U) pour lu / non lu, ⌘R pour relever.
-- **Relève** : à l'ouverture d'une boîte, au retour dans l'app et par ⌘R. La première visite d'une boîte rapporte ses **300 derniers messages** ; ensuite seuls les nouveaux, les drapeaux des autres, et ce qui a disparu du serveur est retiré. Une connexion IMAP par compte, gardée ouverte, rouverte une fois si elle est tombée.
+- **La liste** : expéditeur et date (« 15:41 », « hier », « vendredi », « 2 oct. »), objet ; non lu en clair avec un point d'accent, lu en gris. ↑ ↓ ou J K pour passer d'un message à l'autre, U (ou ⇧⌘U) pour lu / non lu, ⇧⌘N pour relever.
+- **Relève** : à l'ouverture d'une boîte, au retour dans l'app et par ⇧⌘N. La première visite d'une boîte rapporte ses **300 derniers messages** ; ensuite seuls les nouveaux, les drapeaux des autres, et ce qui a disparu du serveur est retiré. Une connexion IMAP par compte, gardée ouverte, rouverte une fois si elle est tombée.
 - **Le message** : l'objet en titre, la ligne de l'expéditeur et de la date en petite chasse fixe, comme les dates d'une note. Ouvrir un message le marque lu, sur le serveur aussi. Un texte brut prend la typographie de l'app, ses adresses deviennent des liens ; un message HTML garde sa page blanche, sur une carte, **sans JavaScript, sans cookies, sans rien charger d'Internet** (une politique de sécurité de contenu passe devant celle du message). « Charger les images » les autorise pour ce message. Les images intégrées (`cid:`) s'affichent toujours. Un lien s'ouvre dans le navigateur.
 - **Pièces jointes** : en cartes (icône, nom, taille) sous l'en-tête ; un clic en ouvre une copie dans son app.
 - **Recherche** : dans toutes les boîtes du compte, sur l'objet, l'expéditeur et le texte des messages déjà ouverts, au début des mots, accents ignorés (FTS5).
@@ -89,11 +93,11 @@ Réglages → Apparence : thème, couleur d'accent et teinte de la fenêtre, **l
 
 ## Trier
 
-Un geste par message, au clavier dans la liste ou par les boutons au bout de la ligne de l'objet (comme ceux d'une note) :
+Un geste par message, au clavier dans la liste, par les boutons au bout de la ligne de l'objet (comme ceux d'une note), ou — comme dans Spark — par les **petites icônes qui remplacent la date au survol d'une ligne** (épingler, lu / non lu, archiver, corbeille), sans ouvrir le message. Clic droit sur une ligne : les mêmes, et **« Déplacer vers »** n'importe quelle boîte du compte.
 
 | Geste | Clavier | Ce qui se passe |
 |---|---|---|
-| Archiver | E (⇧⌘E) | vers la boîte Archives ; depuis les Archives, retour en Réception |
+| Archiver | E (⌃⌘A, comme dans Void Notes) | vers la boîte Archives ; depuis les Archives, retour en Réception |
 | Mettre à la corbeille | ⌫ (⌘⌫) | vers la Corbeille ; depuis la Corbeille, suppression définitive après confirmation |
 | Épingler en tête | ⌃⌘P | drapeau `\Flagged` du serveur : le message passe en tête de sa boîte, suivi d'une épingle |
 | Lu / non lu | U (⇧⌘U) | |
@@ -101,7 +105,21 @@ Un geste par message, au clavier dans la liste ou par les boutons au bout de la 
 - **Annuler** : le message quitte la liste aussitôt, le suivant s'ouvre, les compteurs suivent ; « Archivé · Annuler » reste **5 secondes** en bas de la liste (⌘Z aussi). Le geste ne part au serveur qu'ensuite — ou tout de suite si un autre geste suit, ou si l'on quitte l'app. Refusé par le serveur, le message revient à sa place et l'erreur le dit.
 - **Sur le serveur** : `UID MOVE` (RFC 6851) quand il le connaît, sinon copie, `\Deleted` et `UID EXPUNGE` (seulement ces messages, avec UIDPLUS).
 - **Nouveaux messages en direct** : une seconde connexion par compte attend en **IDLE** sur la Réception (relancée toutes les 24 minutes, sous la limite des serveurs) ; ce qui y arrive ou en part met la liste et les compteurs à jour sans ⌘R. Sans IDLE sur le serveur, la Réception est relue toutes les 5 minutes. Après une coupure (veille, réseau), la connexion revient d'elle-même, en espaçant ses essais.
-- ⌘Z sert à annuler un geste : le menu Édition n'a plus son « Annuler » pour le texte des champs (la recherche, la feuille d'ajout de compte).
+- ⌘Z sert à annuler un geste ou un envoi : le menu Édition n'a plus son « Annuler » pour le texte des champs (la recherche, les adresses) ; dans le texte d'un message, l'éditeur garde le sien.
+
+## Écrire
+
+⌘N (ou le crayon en haut à droite) pour un nouveau message ; ⌘R répondre, ⇧⌘R répondre à tous, ⇧⌘F transférer (aussi R et A dans la liste, et les flèches au bout de la ligne de l'objet). Chaque message s'écrit dans sa propre fenêtre, sur le cadre de Void.
+
+- **L'éditeur de Void Notes**, repris tel quel (`Shared/Editor`, `VoidMail/Editor`) : on tape `# `, `- `, `1. `, `[] `, `> `, `**gras**`, `*italique*`, `==surligné==`, `~~barré~~`, `` `code` ``, `---`, les marques disparaissent et le texte prend sa forme ; listes imbriquées (Tab), Markdown collé mis en forme, orthographe soulignée. Menu **Format** avec les raccourcis de Void Notes (⌘B, ⌘I, ⇧⌘E surligner, ⇧⌘X barré, ⌥⌘1 / 2 / 0, ⌥⌘6 / 7 / 8 listes, ⌥⌘9 citation). Pas de titre automatique sur la première ligne, pas de date : c'est un message.
+- **Adresses** : séparées par des virgules ; ceux qui ont déjà écrit au compte sont proposés pendant la frappe (↑ ↓, Tab ou Entrée). Cc et Cci à la demande. Un destinataire manquant ou une adresse qui n'en est pas une est signalé avant l'envoi.
+- **Pièces jointes** : le trombone (⇧⌘A), glisser-déposer ou coller dans le texte, en cartes comme dans une note. Un message transféré emporte les siennes (✕ pour en retirer une).
+- **Répondre** : « Re: » (jamais « Re: Re: »), le texte d'origine en citation sous « Le 18 oct. 2026 à 18:05, Camille a écrit : », le curseur au-dessus ; répondre à tous écarte sa propre adresse ; le fil est gardé (`In-Reply-To`, `References`).
+- **Ce qui part** : `multipart/alternative` — une version texte en Markdown, lisible telle quelle, et un HTML sobre (titres, listes, citations, gras…, aucune police ni couleur imposée) —, les fichiers en `multipart/mixed`, objet et noms encodés (RFC 2047), quoted-printable à 76 colonnes, CRLF. Les Cci sont dans l'enveloppe SMTP, jamais dans les en-têtes.
+- **Envoi différé** : « Envoyer » (⌘↩) ferme la fenêtre ; le message part **10 secondes** plus tard — « Envoi de « … » · Annuler » en bas de la liste, ou ⌘Z, le rouvre. Quitter l'app l'envoie d'abord. S'il échoue, il revient dans sa fenêtre, rien n'est perdu.
+- **Envoyés** : une copie y est rangée (IMAP `APPEND`), sauf chez Gmail, Microsoft et Proton Mail Bridge, qui le font eux-mêmes.
+- **Brouillons** : fermer la fenêtre sans envoyer range le message dans Brouillons (pas de bouton « Enregistrer ») ; la corbeille en haut à gauche le jette. Un message laissé vide est simplement oublié.
+- **`mailto:`** : Void Mail ouvre les liens `mailto:` (destinataire, objet, texte, Cc) dans un nouveau message.
 
 ## État (honnête)
 
@@ -122,9 +140,11 @@ Un geste par message, au clavier dans la liste ou par les boutons au bout de la 
 - 🟡 **OAuth Microsoft** : écrit, jamais exécuté de bout en bout (pas d'identifiant Azure, pas de compte Outlook)
 - ☑️ Archiver, corbeille, épingler, annuler (captures en démonstration) ; 🟡 pas encore essayés sur un vrai compte
 - 🟡 IDLE : écrit, pas encore observé sur un vrai compte
-- ❌ Messages plus anciens que les 300 derniers, lecture épurée, gestes sur plusieurs messages à la fois
-- ❌ Compositeur (éditeur de Void Notes), envoi, envoi différé
-- ❌ Ponts avec Void et Void Notes, `mailto:` (déclaré dans `Config/Info.plist`, pas encore traité)
+- ✅ Écrire : message composé puis relu par le décodeur (objet accentué, destinataires, Cci absent des en-têtes, Markdown, HTML, pièce jointe au nom accentué, CRLF), quoted-printable, réponse (destinataires, « Re: », fil, citation), répondre à tous, transfert, adresses vérifiées, `mailto:`
+- ☑️ Fenêtre d'écriture, actions au survol (captures en démonstration)
+- 🟡 **Envoi réel (SMTP), copie dans Envoyés, brouillon rangé** : écrits, jamais exécutés contre un vrai serveur — à essayer sur le compte Proton
+- ❌ Messages plus anciens que les 300 derniers, lecture épurée, gestes sur plusieurs messages à la fois, rouvrir un brouillon de Brouillons pour le continuer, signature
+- ❌ Ponts avec Void et Void Notes (« Envoyer vers Void Notes », « Envoyer la page par mail »)
 - ❌ iPhone
 
 ## Vérifier
@@ -133,9 +153,9 @@ Un geste par message, au clavier dans la liste ou par les boutons au bout de la 
 "build/DerivedData/Build/Products/Debug/Void Mail.app/Contents/MacOS/Void Mail" -selfTest YES
 ```
 
-93 vérifications avec `-network YES` (89 sans). Le code de sortie est le nombre d'échecs. Le test ne touche ni aux vrais comptes, ni aux préférences, ni au trousseau.
+116 vérifications avec `-network YES` (112 sans). Le code de sortie est le nombre d'échecs. Le test ne touche ni aux vrais comptes, ni aux préférences, ni au trousseau.
 
-Autres arguments (builds Debug) : `-demo YES` (deux comptes de démonstration et leur Réception ; `-openUID 101` ou `103` ouvre un message texte ou HTML, `-gesture archive`, `trash` ou `pin` y applique un geste), `-addAccount YES -address <adresse>` (la feuille ouverte), `-theme light -accent pink -tint peach` (l'apparence), `-snapshot YES` (une capture de la fenêtre, ou de la feuille ouverte, en PNG base64 sur la sortie standard, la seule sortie que le bac à sable laisse lire) :
+Autres arguments (builds Debug) : `-demo YES` (deux comptes de démonstration et leur Réception ; `-openUID 101` ou `103` ouvre un message texte ou HTML, `-gesture archive`, `trash` ou `pin` y applique un geste, `-hoverUID 103` montre les actions au survol, `-compose reply` ou `new` ouvre une fenêtre d'écriture), `-addAccount YES -address <adresse>` (la feuille ouverte), `-theme light -accent pink -tint peach` (l'apparence), `-snapshot YES` (une capture de la fenêtre, ou de la feuille ouverte, en PNG base64 sur la sortie standard, la seule sortie que le bac à sable laisse lire) :
 
 ```bash
 "build/DerivedData/Build/Products/Debug/Void Mail.app/Contents/MacOS/Void Mail" -demo YES -snapshot YES | sed -n 's/^SNAPSHOT://p' | base64 -d > fenetre.png
@@ -146,9 +166,11 @@ Autres arguments (builds Debug) : `-demo YES` (deux comptes de démonstration et
 | Dossier | Contenu |
 |---|---|
 | `Shared/App` | Préférences (`AppSettings`), palette (`Theme`), teinte de la fenêtre (`ChromeTint`) : repris de Void Notes |
-| `Shared/Mail` | Compte, serveur, boîte (`MailAccount`), hébergeurs (`ProviderDirectory`), trousseau (`Keychain`), OAuth (`OAuth`), connexion ligne à ligne et SASL (`MailStream`), `IMAPClient` et ses réponses (`IMAPValue`), `SMTPClient`, MIME (`MIME`), cache et recherche (`MailCache`), connexion par compte et relève (`AccountSession`), comptes sur disque et vérification d'un compte (`AccountStore`), état de la fenêtre (`MailModel`), dates (`MailDate`) |
+| `Shared/Mail` | Compte, serveur, boîte (`MailAccount`), hébergeurs (`ProviderDirectory`), trousseau (`Keychain`), OAuth (`OAuth`), connexion ligne à ligne et SASL (`MailStream`), `IMAPClient` et ses réponses (`IMAPValue`), `SMTPClient`, MIME (`MIME`), cache et recherche (`MailCache`), connexion par compte et relève (`AccountSession`), comptes sur disque et vérification d'un compte (`AccountStore`), état de la fenêtre (`MailModel`), dates (`MailDate`), message écrit et sa mise en MIME (`OutgoingMessage`), envoi différé et brouillons (`Outbox`) |
+| `Shared/Editor` | L'éditeur de Void Notes : format (`NoteFormat`, `NoteContent`), règles de frappe (`TypingRules`), Markdown (`NoteMarkdown`), HTML envoyé (`NoteHTML`) |
 | `Shared/Debug` | Arguments de lancement et comptes de démonstration (builds Debug) |
 | `VoidMail/App` | Mac : point d'entrée, menus |
-| `VoidMail/UI` | Mac : fenêtre, barre latérale et comptes (`MailboxSidebar`), liste (`MessageList`), message et HTML protégé (`MessageView`), ajout d'un compte (`AccountSheet`), cadre de la fenêtre (`AppKitBridges`) |
+| `VoidMail/UI` | Mac : fenêtre, barre latérale et comptes (`MailboxSidebar`), liste (`MessageList`), message et HTML protégé (`MessageView`), écrire (`ComposeView`), ajout d'un compte (`AccountSheet`), cadre de la fenêtre (`AppKitBridges`) |
+| `VoidMail/Editor` | Mac : la vue de texte de Void Notes (`NoteTextView`), pièces jointes, orthographe |
 | `VoidMail/Settings` | Mac : réglages |
 | `VoidMail/Debug` | Mac : auto-test (builds Debug uniquement) |

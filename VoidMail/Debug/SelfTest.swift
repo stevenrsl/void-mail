@@ -25,6 +25,7 @@ enum SelfTest {
         mime()
         dates()
         htmlPolicy()
+        composing()
         Task {
             await cacheChecks()
             afterOffline()
@@ -174,6 +175,66 @@ enum SelfTest {
         let blocked = HTMLMessageView.page("<head><meta http-equiv=\"Content-Security-Policy\" content=\"img-src *\"></head>", allowsRemote: false)
         check(blocked.hasPrefix("<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; img-src data: cid:;"), "la politique de l'app passe avant celle du message")
         check(HTMLMessageView.page("", allowsRemote: true).contains("img-src data: cid: https: http:"), "« Charger les images » les autorise")
+    }
+
+    private static func composing() {
+        print("Écrire")
+        var account = MailAccount(name: "Steven Roussel", address: "hello@stevenrsl.eu", preset: ProviderDirectory.preset(for: "hello@stevenrsl.eu"))
+        account.mailboxes = []
+        // A note-like text: a title-less paragraph, bold, a nested list, a checklist, a quote.
+        let text = "Bonjour Camille,\nVoici le programme :\n• Sintra\n    • Pena\n1. Train\n☐ Billets\nÀ bientôt"
+        let ns = text as NSString
+        var runs = [StyleRun(start: ns.range(of: "programme").location, length: 9, bold: true)]
+        runs.append(StyleRun(start: ns.range(of: "    • Pena").location, length: ("    • Pena" as NSString).length, indent: 1))
+        let draft = Draft(account: account.id, to: "Camille Moreau <camille@exemple.fr>, b@c.fr", cc: "", bcc: "secret@d.fr",
+                          subject: "Été à Lisbonne", content: NoteContent(text: text.replacingOccurrences(of: "    • Pena", with: "• Pena"), runs: []))
+        _ = runs
+        let file = Draft.File(name: "résumé.pdf", data: Data("%PDF-1.4\n".utf8), contentType: "application/pdf")
+        let built = MessageComposer.build(draft, from: account, files: [file], date: Date(timeIntervalSince1970: 1_800_000_000))
+        let raw = String(decoding: built.data, as: UTF8.self)
+        let back = MailMessage(raw: built.data)
+        check(back.subject == "Été à Lisbonne", "objet accentué encodé puis relu")
+        check(back.from.first == MailAddress(name: "Steven Roussel", address: "hello@stevenrsl.eu"), "expéditeur")
+        check(back.to.map(\.address) == ["camille@exemple.fr", "b@c.fr"] && back.to.first?.name == "Camille Moreau", "destinataires")
+        check(!raw.contains("secret@d.fr") && built.recipients.contains("secret@d.fr"), "Cci : dans l'enveloppe, jamais dans les en-têtes")
+        check(back.plainText?.contains("- Sintra") == true && back.plainText?.contains("Bonjour Camille,") == true, "version texte en Markdown")
+        check(back.html?.contains("<ul>") == true && back.html?.contains("<ol>") == true && back.html?.contains("☐ Billets") == true, "version HTML : listes, cases")
+        check(back.attachments.map(\.filename) == ["résumé.pdf"] && back.attachments.first?.data == file.data, "pièce jointe au nom accentué")
+        check(raw.components(separatedBy: "\r\n").allSatisfy { $0.count <= 998 } && !raw.contains("\n\n"), "lignes CRLF, sous la limite")
+        check(built.messageID.hasSuffix("@stevenrsl.eu>"), "Message-ID sur le domaine du compte")
+
+        let qp = MessageComposer.quotedPrintable(String(repeating: "é", count: 60) + " fin ")
+        check(qp.components(separatedBy: "\r\n").allSatisfy { $0.count <= 76 } && qp.hasSuffix("=20"), "quoted-printable : 76 caractères, espace final protégé")
+        check(String(data: MIMEHeader.quotedPrintable(Data(qp.utf8)), encoding: .utf8) == String(repeating: "é", count: 60) + " fin ", "quoted-printable : aller-retour")
+        check(MessageComposer.address(MailAddress(name: "Moreau, Camille", address: "c@e.fr")) == "\"Moreau, Camille\" <c@e.fr>", "nom entre guillemets quand il le faut")
+
+        let html = NoteHTML.html(from: NoteContent(text: "Titre\nUn x\n• a\n• b\ncité", runs: [
+            StyleRun(start: 0, length: 5, block: .title), StyleRun(start: 9, length: 1, bold: true), StyleRun(start: 19, length: 4, block: .quote),
+        ]))
+        check(html.contains("<h1") && html.contains("<b>x</b>") && html.contains("<ul><li>a</li><li>b</li></ul>") && html.contains("<blockquote"), "HTML : titre, gras, liste, citation")
+        check(NoteHTML.escape("<a & \"b\">") == "&lt;a &amp; &quot;b&quot;&gt;", "HTML échappé")
+
+        // Reply and forward of a message read.
+        let original = MailMessage(raw: Data("From: Camille <camille@exemple.fr>\r\nTo: hello@stevenrsl.eu, julien@exemple.fr\r\nCc: ana@exemple.fr\r\nSubject: Sintra\r\nMessage-ID: <m2@exemple.fr>\r\nReferences: <m1@exemple.fr>\r\nDate: Sat, 18 Oct 2026 18:05:00 +0200\r\n\r\nOn part à 9 h ?\r\n".utf8))
+        let summary = MessageSummary(id: 1, account: account.id, mailbox: "INBOX", uid: 1, date: Date(), subject: "Sintra",
+                                     sender: MailAddress(name: "Camille", address: "camille@exemple.fr"), recipients: "", flags: [], size: 0)
+        let reply = Draft.reply(to: original, summary: summary, account: account, all: false)
+        check(reply.subject == "Re: Sintra" && reply.to == "Camille <camille@exemple.fr>" && reply.cc.isEmpty, "répondre : à l'expéditeur, « Re: »")
+        check(reply.inReplyTo == "<m2@exemple.fr>" && reply.references == ["<m1@exemple.fr>", "<m2@exemple.fr>"], "répondre : fil (In-Reply-To, References)")
+        let crlf = Draft.reply(to: MailMessage(raw: Data("From: a@b.fr\r\nSubject: x\r\n\r\nUn\r\n\r\nDeux".utf8)), summary: summary, account: account, all: false)
+        check(crlf.content.text.hasSuffix("Un\nDeux"), "répondre : CRLF compté comme un saut de ligne, sans lignes vides dans la citation")
+        check(reply.content.text.hasPrefix("\n\nLe ") && reply.content.text.hasSuffix("On part à 9 h ?") && reply.content.runs.first?.block == .quote, "répondre : texte cité en citation")
+        let all = Draft.reply(to: original, summary: summary, account: account, all: true)
+        check(all.to.contains("julien@exemple.fr") && !all.to.contains("hello@stevenrsl.eu") && all.cc == "ana@exemple.fr", "répondre à tous, sans soi-même")
+        check(Draft.reply(to: original, summary: MessageSummary(id: 1, account: account.id, mailbox: "INBOX", uid: 1, date: Date(), subject: "Re: Sintra", sender: summary.sender, recipients: "", flags: [], size: 0), account: account, all: false).subject == "Re: Sintra", "pas de « Re: Re: »")
+        let forward = Draft.forward(original, summary: summary, account: account)
+        check(forward.subject == "Fwd: Sintra" && forward.to.isEmpty && forward.content.text.contains("Message transféré"), "transférer")
+        check(Outbox.shared.problem(with: Draft(account: account.id)) == "Ajoutez au moins un destinataire."
+              && Outbox.shared.problem(with: Draft(account: account.id, to: "camille")) != nil
+              && Outbox.shared.problem(with: Draft(account: account.id, to: "c@e.fr")) == nil, "destinataires vérifiés avant l'envoi")
+        let mailto = Outbox.shared.draft(fromMailto: URL(string: "mailto:a@b.fr?subject=Bonjour%20toi&cc=c@d.fr")!, account: account)
+        check(mailto.flatMap { Outbox.shared.drafts[$0] }.map { $0.to == "a@b.fr" && $0.subject == "Bonjour toi" && $0.cc == "c@d.fr" } == true, "lien mailto:")
+        if let mailto { Outbox.shared.discard(mailto) }
     }
 
     private static func cacheChecks() async {

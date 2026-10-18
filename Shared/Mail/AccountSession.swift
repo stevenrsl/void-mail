@@ -70,6 +70,12 @@ actor AccountSession {
         }
     }
 
+    func append(_ data: Data, to mailbox: String, flags: [String]) async throws {
+        try await withConnection { client in
+            try await client.append(data, to: mailbox, flags: flags)
+        }
+    }
+
     /// The counts of the mailboxes that can be opened, one STATUS each; a mailbox that refuses
     /// is left out.
     func counts(_ paths: [String]) async throws -> [String: IMAPClient.Count] {

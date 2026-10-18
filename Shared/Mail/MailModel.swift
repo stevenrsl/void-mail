@@ -221,6 +221,21 @@ final class MailModel {
         setFlag("\\Flagged", on: !message.isFlagged, for: message)
     }
 
+    // MARK: Writing
+
+    /// A reply to the open message (`all`: to everyone it went to, but this account); its draft's id.
+    func replyDraft(all: Bool) -> UUID? {
+        guard let summary = selectedMessage, let message = openMessage, let account = store.account(summary.account) else { return nil }
+        return Outbox.shared.add(Draft.reply(to: message, summary: summary, account: account, all: all))
+    }
+
+    func forwardDraft() -> UUID? {
+        guard let summary = selectedMessage, let message = openMessage, let account = store.account(summary.account) else { return nil }
+        return Outbox.shared.add(Draft.forward(message, summary: summary, account: account))
+    }
+
+    var canReply: Bool { selectedMessage != nil && openMessage != nil }
+
     // MARK: Gestures
 
     func archivePath(of account: MailAccount) -> String? { account.mailboxes.first { $0.role == .archive }?.path }

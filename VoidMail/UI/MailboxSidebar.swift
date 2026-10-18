@@ -111,7 +111,7 @@ private struct AccountBar: View {
                     .transition(.opacity)
             }
             Spacer(minLength: 0)
-            ChromeButton(symbol: "plus", help: "Ajouter un compte (⇧⌘N)") { model.addingAccount = true }
+            ChromeButton(symbol: "plus", help: "Ajouter un compte (⌥⌘N)") { model.addingAccount = true }
                 .opacity(hovering || store.accounts.isEmpty ? 1 : 0)
         }
         .padding(.horizontal, 14)

@@ -8,6 +8,8 @@ struct MainWindowView: View {
     @Environment(AccountStore.self) private var store
     @Environment(MailModel.self) private var model
     @Environment(AppSettings.self) private var settings
+    @Environment(Outbox.self) private var outbox
+    @Environment(\.openWindow) private var openWindow
 
     static let autosaveName = "VoidMailMainWindow"
 
@@ -38,7 +40,23 @@ struct MainWindowView: View {
         .frame(minWidth: 820, minHeight: 460)
         // The window's frame below the toolbar; the toolbar's is drawn by the title bar (`WindowBackdrop`).
         .background { if WindowBackdrop.metrics.split { WindowChrome(edge: .bottom) } }
-        .toolbar { MailToolbar(settings: settings) }
+        .toolbar { MailToolbar(settings: settings) { if let id = outbox.newDraft(account: model.currentAccount) { openWindow(id: "compose", value: id) } } }
+        // A draft to show again (an undone or failed send).
+        .onChange(of: outbox.reopen) { _, id in
+            if let id {
+                openWindow(id: "compose", value: id)
+                outbox.reopen = nil
+            }
+        }
+        // mailto: links (Void, any app): a new message.
+        .onOpenURL { url in
+            if let id = outbox.draft(fromMailto: url, account: model.currentAccount) { openWindow(id: "compose", value: id) }
+        }
+        .alert("Envoi", isPresented: Binding(get: { outbox.sendError != nil }, set: { if !$0 { outbox.sendError = nil } })) {
+            Button("OK") {}
+        } message: {
+            Text(outbox.sendError ?? "")
+        }
         .modifier(ChromeToolbarBackground())
         .tint(Theme.accent)
         .background(WindowAccessor(configure: configure))
@@ -50,7 +68,18 @@ struct MainWindowView: View {
         }
         .task {
             #if DEBUG
-            if DebugLaunch.isDemo { await model.loadDemo() }
+            if DebugLaunch.isDemo {
+                await model.loadDemo()
+                // `-compose reply` (or `new`): a message being written, for the snapshots.
+                switch UserDefaults.standard.string(forKey: "compose") {
+                case "reply":
+                    try? await Task.sleep(for: .milliseconds(300))
+                    if let id = model.replyDraft(all: false) { openWindow(id: "compose", value: id) }
+                case "new":
+                    if let id = outbox.newDraft(account: model.currentAccount, to: "Camille Moreau <camille@exemple.fr>") { openWindow(id: "compose", value: id) }
+                default: break
+                }
+            }
             #endif
             await model.refresh()
             model.watchInboxes()
@@ -110,7 +139,7 @@ private struct MessagePane: View {
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(Theme.secondaryText)
             if store.accounts.isEmpty {
-                Button("Ajouter un compte  ⇧⌘N") { model.addingAccount = true }
+                Button("Ajouter un compte  ⌥⌘N") { model.addingAccount = true }
                     .buttonStyle(.plain)
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Theme.onAccent)
@@ -126,12 +155,18 @@ private struct MessagePane: View {
 /// The window's toolbar: the mailboxes on the left, in the chrome's grey — the accent is for the message.
 private struct MailToolbar: ToolbarContent {
     let settings: AppSettings
+    let compose: () -> Void
 
     var body: some ToolbarContent {
         ToolbarItem(placement: .navigation) {
             ChromeButton(symbol: "sidebar.left", help: "Boîtes (⌃⌘S)") {
                 withAnimation(Theme.spring) { settings.showsSidebar.toggle() }
             }
+        }
+        .plainToolbarItem()
+        if #available(macOS 26.0, *) { ToolbarSpacer(.flexible) }
+        ToolbarItem(placement: .primaryAction) {
+            ChromeButton(symbol: "square.and.pencil", help: "Nouveau message (⌘N)", action: compose)
         }
         .plainToolbarItem()
     }

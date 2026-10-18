@@ -79,6 +79,16 @@ final class MailStream {
         }
     }
 
+    /// Writes raw bytes (a message's DATA, an APPEND literal), logged as their size only.
+    func sendData(_ data: Data) async throws {
+        log("C: <\(data.count) octets>")
+        do {
+            try await task.write(data, timeout: max(timeout, Double(data.count) / 50_000))
+        } catch {
+            throw MailError.connection(error)
+        }
+    }
+
     /// Writes a line without logging it: what ends IDLE, sent while a read waits.
     func sendQuietly(_ line: String) async throws {
         do {

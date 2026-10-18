@@ -5,6 +5,7 @@ import SwiftUI
 /// no other color. ↑ ↓ (or J K) go from one to the next.
 struct MessageList: View {
     @Environment(MailModel.self) private var model
+    @Environment(\.openWindow) private var openWindow
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -49,18 +50,26 @@ struct MessageList: View {
         .focused($focused)
         .onKeyPress(.downArrow) { model.move(by: 1); return .handled }
         .onKeyPress(.upArrow) { model.move(by: -1); return .handled }
-        .onKeyPress(characters: CharacterSet(charactersIn: "jkueJKUE")) { press in
+        .onKeyPress(characters: CharacterSet(charactersIn: "jkueraJKUERA")) { press in
             switch press.characters.lowercased() {
             case "j": model.move(by: 1)
             case "k": model.move(by: -1)
             case "e": model.archiveSelected()
+            case "r": if let id = model.replyDraft(all: false) { openWindow(id: "compose", value: id) }
+            case "a": if let id = model.replyDraft(all: true) { openWindow(id: "compose", value: id) }
             default: model.toggleSeen()
             }
             return .handled
         }
         .onKeyPress(.delete) { model.trashSelected(); return .handled }
         .onKeyPress(.deleteForward) { model.trashSelected(); return .handled }
-        .overlay(alignment: .bottom) { UndoBand() }
+        .overlay(alignment: .bottom) {
+            VStack(spacing: 6) {
+                SendBand()
+                UndoBand()
+            }
+            .padding(.bottom, 14)
+        }
     }
 
     private var header: some View {
@@ -79,7 +88,7 @@ struct MessageList: View {
             if model.syncing {
                 ProgressView().controlSize(.small)
             } else {
-                ChromeButton(symbol: "arrow.clockwise", help: "Relever (⌘R)") { Task { await model.refresh() } }
+                ChromeButton(symbol: "arrow.clockwise", help: "Relever (⇧⌘N)") { Task { await model.refresh() } }
             }
         }
         .padding(.horizontal, 18)
@@ -129,9 +138,34 @@ private struct UndoBand: View {
             .frame(height: 32)
             .background(Capsule().fill(Theme.surface).shadow(color: Theme.shadow.opacity(0.25), radius: 8, y: 2))
             .overlay(Capsule().strokeBorder(Theme.stroke))
-            .padding(.bottom, 14)
             .transition(.move(edge: .bottom).combined(with: .opacity))
             .id(gesture.id)
+        }
+    }
+}
+
+/// « Envoi dans quelques secondes · Annuler », while a message waits to leave.
+private struct SendBand: View {
+    @Environment(Outbox.self) private var outbox
+
+    var body: some View {
+        if let draft = outbox.sending {
+            HStack(spacing: 10) {
+                ProgressView().controlSize(.mini)
+                Text("Envoi de « \(draft.subject.isEmpty ? "(sans objet)" : draft.subject) »").font(.system(size: 12)).lineLimit(1)
+                Button("Annuler") { withAnimation(Theme.quick) { outbox.undoSend() } }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.accent)
+                    .help("⌘Z")
+            }
+            .foregroundStyle(Theme.primaryText)
+            .padding(.horizontal, 14)
+            .frame(height: 32)
+            .frame(maxWidth: 290)
+            .background(Capsule().fill(Theme.surface).shadow(color: Theme.shadow.opacity(0.25), radius: 8, y: 2))
+            .overlay(Capsule().strokeBorder(Theme.stroke))
+            .transition(.move(edge: .bottom).combined(with: .opacity))
         }
     }
 }

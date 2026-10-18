@@ -168,6 +168,21 @@ actor MailCache {
         run("UPDATE messages SET flags = ? WHERE id = ?", [flags.sorted().joined(separator: " "), id])
     }
 
+    /// Who wrote to the account, for the address fields: those whose name or address starts
+    /// with what is typed (or a word of the name does), the most frequent first.
+    func contacts(account: UUID, matching text: String, limit: Int = 6) -> [MailAddress] {
+        let typed = text.trimmingCharacters(in: .whitespaces)
+        guard !typed.isEmpty else { return [] }
+        let sql = """
+            SELECT sender_name, sender_address, COUNT(*) AS seen FROM messages
+            WHERE account = ? AND sender_address <> '' AND (sender_address LIKE ? OR sender_name LIKE ? OR sender_name LIKE ?)
+            GROUP BY lower(sender_address) ORDER BY seen DESC LIMIT ?
+            """
+        return query(sql, [account.uuidString, typed + "%", typed + "%", "% " + typed + "%", limit]) {
+            MailAddress(name: Self.text($0, 0), address: Self.text($0, 1))
+        }
+    }
+
     // MARK: Bodies
 
     func body(message id: Int64) -> Data? {

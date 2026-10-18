@@ -34,6 +34,10 @@ final class AppSettings {
     var chromeTintGradient: Bool { didSet { defaults.set(chromeTintGradient, forKey: "chromeTintGradient") } }
     /// The mailboxes on the left of the window.
     var showsSidebar: Bool { didSet { defaults.set(showsSidebar, forKey: "showsSidebar") } }
+    /// Misspelled words underlined in red as one writes.
+    var checksSpelling: Bool { didSet { defaults.set(checksSpelling, forKey: "checksSpelling") } }
+    /// Grammar mistakes underlined in blue (when macOS checks grammar for apps).
+    var checksGrammar: Bool { didSet { defaults.set(checksGrammar, forKey: "checksGrammar") } }
     /// Account shown when the app was last used.
     var currentAccount: String? { didSet { defaults.set(currentAccount, forKey: "currentAccount") } }
 
@@ -54,6 +58,8 @@ final class AppSettings {
         chromeTintGradient = d.object(forKey: "chromeTintGradient") as? Bool ?? true
         showsSidebar = d.object(forKey: "showsSidebar") as? Bool ?? true
         currentAccount = d.string(forKey: "currentAccount")
+        checksSpelling = d.object(forKey: "checksSpelling") as? Bool ?? true
+        checksGrammar = d.object(forKey: "checksGrammar") as? Bool ?? true
         #if DEBUG
         // `-theme light -accent pink -tint lavender -tintAmount 0.12 -tintGradient NO`, as in Void Notes.
         if DebugLaunch.isRequested {

@@ -47,6 +47,27 @@ final class SMTPClient {
         guard code == 235 else { throw MailError.authentication(lines.last ?? "") }
     }
 
+    /// Sends a message: MAIL FROM, one RCPT TO per recipient, DATA with its lines starting with a
+    /// dot doubled (RFC 5321 §4.5.2). A recipient refused stops everything: nobody gets half a send.
+    func send(from: String, to recipients: [String], data: Data) async throws {
+        try await expect(250, after: "MAIL FROM:<\(from)>")
+        for recipient in recipients {
+            try await stream.send("RCPT TO:<\(recipient)>")
+            let (code, lines) = try await readReply()
+            guard code == 250 || code == 251 else {
+                throw MailError.unexpected("\(recipient) refusé : \(lines.last ?? "")")
+            }
+        }
+        try await expect(354, after: "DATA")
+        var text = String(decoding: data, as: UTF8.self)
+        if text.hasPrefix(".") { text = "." + text }
+        text = text.replacingOccurrences(of: "\r\n.", with: "\r\n..")
+        if !text.hasSuffix("\r\n") { text += "\r\n" }
+        try await stream.sendData(Data((text + ".\r\n").utf8))
+        let (code, lines) = try await readReply()
+        guard code == 250 else { throw MailError.unexpected(lines.last ?? "") }
+    }
+
     func quit() async {
         try? await stream.send("QUIT")
         _ = try? await readReply()
