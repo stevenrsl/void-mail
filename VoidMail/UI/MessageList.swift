@@ -30,6 +30,8 @@ struct MessageList: View {
                             MessageRow(message: message, selected: model.selectedMessageID == message.id,
                                        showsMailbox: !model.query.isEmpty)
                                 .id(message.id)
+                                // The last row shown: the older ones come.
+                                .onAppear { if message.id == model.messages.last?.id { Task { await model.loadOlder() } } }
                                 .onTapGesture {
                                     focused = true
                                     model.open(message)
@@ -38,6 +40,13 @@ struct MessageList: View {
                     }
                     .padding(.horizontal, 8)
                     .padding(.bottom, 8)
+                    if model.loadingOlder {
+                        HStack(spacing: 6) {
+                            ProgressView().controlSize(.mini)
+                            Text("Messages plus anciens…").font(.system(size: 11)).foregroundStyle(Theme.secondaryText)
+                        }
+                        .padding(.bottom, 12)
+                    }
                 }
                 .onChange(of: model.selectedMessageID) { _, id in
                     if let id { withAnimation(Theme.quick) { proxy.scrollTo(id) } }

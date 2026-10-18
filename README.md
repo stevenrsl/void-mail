@@ -1,6 +1,6 @@
 # Void Mail
 
-**Un courrier qui s'efface derrière le message.** Version **0.0.5** (préversion : lire, trier, écrire). Void Mail est le troisième compagnon de Void et de [Void Notes](../Void%20Notes) : même palette, même chrome sombre, mêmes réglages d'apparence, rien de superflu à l'écran. Le projet et ses choix sont décrits dans [CONCEPT.md](CONCEPT.md).
+**Un courrier qui s'efface derrière le message.** Version **0.0.6** (préversion : lire, trier, écrire). Void Mail est le troisième compagnon de Void et de [Void Notes](../Void%20Notes) : même palette, même chrome sombre, mêmes réglages d'apparence, rien de superflu à l'écran. Le projet et ses choix sont décrits dans [CONCEPT.md](CONCEPT.md).
 
 - Swift + SwiftUI, AppKit là où c'est utile (fenêtre, barre de titre)
 - Mac : Apple silicon, macOS 14 minimum. iPhone : plus tard, sur `Shared/`
@@ -87,6 +87,7 @@ Réglages → Apparence : thème, couleur d'accent et teinte de la fenêtre, **l
 - **Relève** : à l'ouverture d'une boîte, au retour dans l'app et par ⇧⌘N. La première visite d'une boîte rapporte ses **300 derniers messages** ; ensuite seuls les nouveaux, les drapeaux des autres, et ce qui a disparu du serveur est retiré. Une connexion IMAP par compte, gardée ouverte, rouverte une fois si elle est tombée.
 - **Le message** : l'objet en titre, la ligne de l'expéditeur et de la date en petite chasse fixe, comme les dates d'une note. Ouvrir un message le marque lu, sur le serveur aussi. Un texte brut prend la typographie de l'app, ses adresses deviennent des liens ; un message HTML garde sa page blanche, sur une carte, **sans JavaScript, sans cookies, sans rien charger d'Internet** (une politique de sécurité de contenu passe devant celle du message). « Charger les images » les autorise pour ce message. Les images intégrées (`cid:`) s'affichent toujours. Un lien s'ouvre dans le navigateur.
 - **Pièces jointes** : en cartes (icône, nom, taille) sous l'en-tête ; un clic en ouvre une copie dans son app.
+- **Messages plus anciens** : arrivé en bas de la liste, les suivants viennent — du cache s'il les a, sinon du serveur, 200 à la fois (`UID SEARCH` sous le plus ancien connu, puis leurs enveloppes), jusqu'au premier message de la boîte ; « Messages plus anciens… » le temps qu'ils arrivent.
 - **Recherche** : dans toutes les boîtes du compte, sur l'objet, l'expéditeur et le texte des messages déjà ouverts, au début des mots, accents ignorés (FTS5).
 - **Cache** : `mail.sqlite` à côté de `accounts.json` : enveloppes des boîtes visitées, messages ouverts, index de recherche. Le serveur reste la vérité : si la boîte est renumérotée (UIDVALIDITY), ce que le cache en savait est oublié. Retirer un compte retire aussi son cache.
 - **Décodage** : MIME complet (parties imbriquées, quoted-printable, base64, jeux de caractères, mots encodés RFC 2047, noms de fichier RFC 2231), réponses IMAP lues en octets bruts, littéraux compris.
@@ -123,6 +124,13 @@ Un geste par message, au clavier dans la liste, par les boutons au bout de la li
 - **Reprendre un brouillon** : un message de Brouillons s'ouvre avec « Continuer » à la place des réponses (aussi ↩ dans la liste, ou ⌘R) : il revient dans une fenêtre d'écriture avec ses destinataires, ses Cci, son objet, son fil, ses fichiers et **sa mise en forme** (sa version texte est le Markdown qu'il a été enregistré). Enregistré de nouveau ou envoyé, il remplace l'ancien dans Brouillons.
 - **`mailto:`** : Void Mail ouvre les liens `mailto:` (destinataire, objet, texte, Cc) dans un nouveau message.
 
+## Void et Void Notes
+
+- **Vers Void Notes** : « Envoyer vers Void Notes » (⇧⌘M, ou l'icône de note dans l'en-tête du message) crée une note : l'objet en titre, le texte du message, et « Source : un message de Void Mail », dont le lien (`voidmail://message?id=<Message-ID>`) rouvre le message ici, dans son compte et sa boîte. Grisé sans Void Notes.
+- **Depuis Void Notes** : Fichier → « Envoyer par mail » (⇧⌘M) ouvre un nouveau message, le titre de la note en objet, le reste avec sa mise en forme.
+- **Depuis Void** : Outils → « Envoyer la page par mail » (⌥⌘M) ouvre un nouveau message : le titre de la page en objet, son lien, puis l'article du mode lecture.
+- Les deux passent par `voidmail://compose?to=…&subject=…&markdown=…`, que Void Mail relit avec l'éditeur de Void Notes (la signature s'ajoute dessous) ; sans Void Mail, Void et Void Notes se rabattent sur `mailto:`. Ces deux ajouts sont sur une branche de leur dépôt (`envoyer-page-par-mail` pour Void, `envoyer-par-mail` pour Void Notes), pas encore fusionnés.
+
 ## État (honnête)
 
 ✅ terminé et vérifié par l'auto-test · ☑️ terminé, vérifié à la compilation et sur capture, pas par un test automatisé · 🟡 partiel · ❌ pas encore.
@@ -146,8 +154,9 @@ Un geste par message, au clavier dans la liste, par les boutons au bout de la li
 - ☑️ Fenêtre d'écriture, actions au survol (captures en démonstration)
 - ☑️ **Envoi réel (SMTP)** : vérifié à la main avec le compte Proton (via Bridge), le 18 oct. 2026
 - 🟡 Copie dans Envoyés (recherche puis `APPEND`), brouillon rangé à la fermeture : pas encore vérifiés sur un vrai compte
-- ❌ Messages plus anciens que les 300 derniers, lecture épurée, gestes sur plusieurs messages à la fois
-- ❌ Ponts avec Void et Void Notes (« Envoyer vers Void Notes », « Envoyer la page par mail »)
+- ❌ Lecture épurée, gestes sur plusieurs messages à la fois, ajouter un message à une note existante (comme le fait Void)
+- ☑️ Ponts avec Void et Void Notes : URL vérifiées par l'auto-test des trois apps (celui de Void pas encore lancé) ; l'aller-retour réel entre les apps reste à essayer
+- 🟡 Messages plus anciens : écrit, pas encore essayé sur une vraie boîte de plus de 300 messages
 - ❌ iPhone
 
 ## Vérifier
@@ -156,7 +165,7 @@ Un geste par message, au clavier dans la liste, par les boutons au bout de la li
 "build/DerivedData/Build/Products/Debug/Void Mail.app/Contents/MacOS/Void Mail" -selfTest YES
 ```
 
-125 vérifications avec `-network YES` (121 sans). Le code de sortie est le nombre d'échecs. Le test ne touche ni aux vrais comptes, ni aux préférences, ni au trousseau.
+132 vérifications avec `-network YES` (128 sans). Le code de sortie est le nombre d'échecs. Le test ne touche ni aux vrais comptes, ni aux préférences, ni au trousseau.
 
 Autres arguments (builds Debug) : `-demo YES` (deux comptes de démonstration et leur Réception ; `-openUID 101` ou `103` ouvre un message texte ou HTML, `-gesture archive`, `trash` ou `pin` y applique un geste, `-hoverUID 103` montre les actions au survol, `-compose reply` ou `new` ouvre une fenêtre d'écriture, `-closeCompose YES` la ferme et dit si l'app a tenu, `-composeTo l` y tape « l » dans le champ À pour montrer les suggestions, `-showFormat YES` y ouvre le panneau Aa, `-mailbox Drafts -openUID 501` montre un brouillon et `-compose continue` le reprend), `-addAccount YES -address <adresse>` (la feuille ouverte), `-theme light -accent pink -tint peach` (l'apparence), `-snapshot YES` (une capture de la fenêtre, ou de la feuille ouverte, en PNG base64 sur la sortie standard, la seule sortie que le bac à sable laisse lire) :
 

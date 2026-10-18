@@ -119,6 +119,20 @@ final class IMAPClient {
         return try await command("FETCH \(max(1, exists - count + 1)):* \(Self.envelopeItems)").compactMap(MessageEnvelope.init(fetch:))
     }
 
+    /// The UIDs of the open mailbox under `uid` (older messages), in order.
+    func uids(below uid: Int) async throws -> [Int] {
+        guard uid > 1 else { return [] }
+        return try await command("UID SEARCH UID 1:\(uid - 1)").flatMap(Self.parseSearch).filter { $0 < uid }.sorted()
+    }
+
+    /// The envelopes of these messages.
+    func fetchEnvelopes(uids: [Int]) async throws -> [MessageEnvelope] {
+        guard !uids.isEmpty else { return [] }
+        let wanted = Set(uids)
+        return try await command("UID FETCH \(Self.uidSet(uids)) \(Self.envelopeItems)").compactMap(MessageEnvelope.init(fetch:))
+            .filter { wanted.contains($0.uid) }
+    }
+
     /// The flags of every message from a UID on: those absent are gone from the server.
     func fetchFlags(uidsFrom first: Int) async throws -> [Int: Set<String>] {
         var result: [Int: Set<String>] = [:]

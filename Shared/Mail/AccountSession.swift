@@ -41,6 +41,20 @@ actor AccountSession {
         }
     }
 
+    /// The `count` messages before the oldest one known, into the cache; how many came (0: the
+    /// beginning of the mailbox is reached).
+    func fetchOlder(_ mailbox: String, count: Int = 200) async throws -> Int {
+        try await withConnection { client in
+            let selection = try await self.open(mailbox, client)
+            await self.cache.checkValidity(account: self.account.id, mailbox: mailbox, validity: selection.uidValidity)
+            guard let lowest = await self.cache.lowestUID(account: self.account.id, mailbox: mailbox) else { return 0 }
+            let older = try await client.uids(below: lowest).suffix(count)
+            let envelopes = try await client.fetchEnvelopes(uids: Array(older))
+            await self.cache.insert(envelopes, account: self.account.id, mailbox: mailbox)
+            return envelopes.count
+        }
+    }
+
     /// A message's raw bytes, from the server (the caller keeps them in the cache).
     func body(uid: Int, mailbox: String) async throws -> Data? {
         try await withConnection { client in

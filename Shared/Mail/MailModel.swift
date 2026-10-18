@@ -29,6 +29,14 @@ final class MailModel {
     /// Images from the Internet allowed for the open message.
     var showsRemoteImages = false
 
+    /// Older messages are being brought (the end of the list was reached).
+    private(set) var loadingOlder = false
+    /// How many messages of each mailbox the list shows; more as one scrolls down.
+    @ObservationIgnored private var shownCount: [String: Int] = [:]
+    /// Mailboxes whose first message is in the cache: nothing older to ask for.
+    @ObservationIgnored private var reachedStart: Set<String> = []
+    static let pageSize = 300
+
     /// Search, in every mailbox of the account; empty: the open mailbox.
     var query = "" { didSet { if query != oldValue { Task { await reloadList() } } } }
 
@@ -130,10 +138,38 @@ final class MailModel {
         let query = self.query.trimmingCharacters(in: .whitespaces)
         if query.isEmpty {
             guard let mailbox = selectedMailbox else { messages = []; return }
-            messages = await cache.messages(account: account.id, mailbox: mailbox).filter { !hidden.contains($0.id) }
+            let limit = shownCount["\(account.id)/\(mailbox)"] ?? Self.pageSize
+            messages = await cache.messages(account: account.id, mailbox: mailbox, limit: limit).filter { !hidden.contains($0.id) }
         } else {
             messages = await cache.search(account: account.id, text: query).filter { !hidden.contains($0.id) }
         }
+    }
+
+    /// The end of the list reached: the next messages — from the cache if it has more, else from
+    /// the server, a page at a time, until the mailbox's first one.
+    func loadOlder() async {
+        guard query.isEmpty, !loadingOlder, let account = currentAccount, let mailbox = selectedMailbox else { return }
+        let key = "\(account.id)/\(mailbox)"
+        let limit = shownCount[key] ?? Self.pageSize
+        // The list isn't full: everything the cache has is shown already.
+        let cached = messages.count + hidden.count >= limit
+        if !cached, reachedStart.contains(key) { return }
+        loadingOlder = true
+        defer { loadingOlder = false }
+        if !cached {
+            #if DEBUG
+            if DebugLaunch.isRequested { reachedStart.insert(key); return }
+            #endif
+            do {
+                let count = try await session(for: account).fetchOlder(mailbox)
+                if count == 0 { reachedStart.insert(key); return }
+            } catch {
+                serverError = Self.describe(error)
+                return
+            }
+        }
+        shownCount[key] = limit + Self.pageSize
+        await reloadList()
     }
 
     // MARK: The open message

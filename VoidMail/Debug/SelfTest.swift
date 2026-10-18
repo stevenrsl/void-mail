@@ -98,6 +98,7 @@ enum SelfTest {
         check(!MailboxSidebar.showsUnseen(Mailbox(path: "All Mail", delimiter: "/", attributes: ["\\All"])) && MailboxSidebar.showsUnseen(Mailbox(path: "INBOX", delimiter: "/", attributes: [])), "non lus montrés là où il y a quelque chose à faire")
         check(IMAPClient.uidSet([9, 3, 4, 5, 12, 11]) == "3:5,9,11:12", "plages d'UID")
         check(IMAPClient.uidSet([7]) == "7", "un seul UID")
+        check(IMAPClient.uidSet([1, 2, 3, 10, 11]) == "1:3,10:11", "plages d'UID des messages plus anciens")
         check(IMAPClient.parseSearch(IMAPLine("* SEARCH 12 15")) == [12, 15] && IMAPClient.parseSearch(IMAPLine("* SEARCH")).isEmpty, "SEARCH : UIDs trouvés, ou aucun")
         check(IMAPClient.code("UIDVALIDITY", in: "* OK [UIDVALIDITY 3857529045] UIDs valid") == 3857529045, "UIDVALIDITY")
     }
@@ -304,6 +305,8 @@ enum SelfTest {
         check(list.map(\.uid) == [3, 1] && list[1].isSeen, "drapeaux mis à jour, message disparu du serveur retiré")
         let removed = await cache.search(account: account, text: "facture")
         check(removed.isEmpty, "retiré aussi de la recherche")
+        let page = await cache.messages(account: account, mailbox: "INBOX", limit: 1)
+        check(page.map(\.uid) == [3], "liste par pages : la plus récente d'abord")
         await cache.setFlag("\\Flagged", on: true, message: list[1].id)
         let pinned = await cache.messages(account: account, mailbox: "INBOX")
         check(pinned.map(\.uid) == [1, 3] && pinned[0].isFlagged, "message épinglé en tête")
