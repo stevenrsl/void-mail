@@ -181,8 +181,9 @@ final class MailModel {
         open(messages[target])
     }
 
-    func toggleSeen() {
-        guard let message = selectedMessage else { return }
+    /// U: the message given (a row's button) or the open one.
+    func toggleSeen(_ given: MessageSummary? = nil) {
+        guard let message = given ?? selectedMessage else { return }
         setFlag("\\Seen", on: !message.isSeen, for: message)
     }
 
@@ -215,8 +216,8 @@ final class MailModel {
         }
     }
 
-    func togglePinned() {
-        guard let message = selectedMessage else { return }
+    func togglePinned(_ given: MessageSummary? = nil) {
+        guard let message = given ?? selectedMessage else { return }
         setFlag("\\Flagged", on: !message.isFlagged, for: message)
     }
 
@@ -226,8 +227,8 @@ final class MailModel {
     func trashPath(of account: MailAccount) -> String? { account.mailboxes.first { $0.role == .trash }?.path }
 
     /// E: to the Archives; from the Archives, back to the Inbox.
-    func archiveSelected() {
-        guard let message = selectedMessage, let account = store.account(message.account) else { return }
+    func archiveSelected(_ given: MessageSummary? = nil) {
+        guard let message = given ?? selectedMessage, let account = store.account(message.account) else { return }
         guard let archive = archivePath(of: account) else { serverError = "Ce compte n'a pas de boîte Archives."; return }
         if message.mailbox == archive {
             perform(.move(to: "INBOX"), on: message, label: "Remis en Réception")
@@ -237,13 +238,22 @@ final class MailModel {
     }
 
     /// ⌫: to the trash; in the trash (or without one), deleted for good after confirmation.
-    func trashSelected() {
-        guard let message = selectedMessage, let account = store.account(message.account) else { return }
+    func trashSelected(_ given: MessageSummary? = nil) {
+        guard let message = given ?? selectedMessage, let account = store.account(message.account) else { return }
         if let trash = trashPath(of: account), message.mailbox != trash {
             perform(.move(to: trash), on: message, label: "Mis à la corbeille")
         } else {
             confirmingDeletion = message
         }
+    }
+
+    /// Any mailbox of the account but the one the message is in, for « Déplacer vers ».
+    func destinations(for message: MessageSummary) -> [Mailbox] {
+        store.account(message.account)?.sortedMailboxes.filter { $0.isSelectable && $0.path != message.mailbox && $0.role != .all } ?? []
+    }
+
+    func move(_ message: MessageSummary, to mailbox: Mailbox) {
+        perform(.move(to: mailbox.path), on: message, label: "Déplacé vers « \(mailbox.displayName) »")
     }
 
     func deleteForGood(_ message: MessageSummary) {
@@ -261,7 +271,10 @@ final class MailModel {
         hidden.insert(message.id)
         messages.removeAll { $0.id == message.id }
         adjustCounts(for: message, kind: kind)
-        if let next { open(next) } else { closeMessage() }
+        // The open message gone: the next one opens. Another one (a row's button): the open one stays.
+        if message.id == selectedMessageID {
+            if let next { open(next) } else { closeMessage() }
+        }
         if undoable {
             pending = gesture
             pendingTimer = Task {

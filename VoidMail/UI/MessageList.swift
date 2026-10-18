@@ -140,6 +140,7 @@ private struct MessageRow: View {
     let message: MessageSummary
     let selected: Bool
     let showsMailbox: Bool
+    @Environment(MailModel.self) private var model
     @State private var hovering = false
 
     var body: some View {
@@ -155,12 +156,15 @@ private struct MessageRow: View {
                         .foregroundStyle(message.isSeen ? Theme.secondaryText : Theme.primaryText)
                         .lineLimit(1)
                     Spacer(minLength: 6)
-                    if message.isFlagged {
-                        Image(systemName: "pin.fill").font(.system(size: 9)).foregroundStyle(Theme.secondaryText)
+                    // The date steps aside for the quick actions while the pointer is on the row.
+                    if !hovering {
+                        if message.isFlagged {
+                            Image(systemName: "pin.fill").font(.system(size: 9)).foregroundStyle(Theme.secondaryText)
+                        }
+                        Text(MailDate.listLabel(message.date))
+                            .font(.system(size: 11).monospacedDigit())
+                            .foregroundStyle(Theme.secondaryText)
                     }
-                    Text(MailDate.listLabel(message.date))
-                        .font(.system(size: 11).monospacedDigit())
-                        .foregroundStyle(Theme.secondaryText)
                 }
                 Text(message.subject.isEmpty ? "(sans objet)" : message.subject)
                     .font(.system(size: 12))
@@ -176,11 +180,61 @@ private struct MessageRow: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 8)
         .background(RoundedRectangle(cornerRadius: 7).fill(selected ? Theme.accentSoft : hovering ? Theme.hover : .clear))
+        .overlay(alignment: .topTrailing) {
+            if hovering { QuickActions(message: message).padding(.top, 3).padding(.trailing, 4).transition(.opacity) }
+        }
         .contentShape(Rectangle())
-        .onHover { hovering = $0 }
+        .onHover { over in withAnimation(Theme.quick) { hovering = over } }
+        #if DEBUG
+        // `-hoverUID 103`: that row as under the pointer, for the snapshots.
+        .onAppear { if UserDefaults.standard.integer(forKey: "hoverUID") == message.uid { hovering = true } }
+        #endif
+        .contextMenu { RowMenu(message: message) }
         .help(message.sender.address)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(selected ? .isSelected : [])
+        .accessibilityAction(named: "Archiver") { model.archiveSelected(message) }
+        .accessibilityAction(named: "Mettre à la corbeille") { model.trashSelected(message) }
+    }
+}
+
+/// At the end of a row under the pointer, as in Spark: pin, read / unread, archive, trash — in the
+/// chrome's grey, acting on that row without opening it.
+private struct QuickActions: View {
+    let message: MessageSummary
+    @Environment(MailModel.self) private var model
+
+    var body: some View {
+        HStack(spacing: 0) {
+            button(message.isFlagged ? "pin.slash" : "pin", message.isFlagged ? "Désépingler" : "Épingler en tête") { model.togglePinned(message) }
+            button(message.isSeen ? "envelope.badge" : "envelope.open", message.isSeen ? "Marquer comme non lu" : "Marquer comme lu") { model.toggleSeen(message) }
+            button("archivebox", "Archiver") { model.archiveSelected(message) }
+            button("trash", "Mettre à la corbeille") { model.trashSelected(message) }
+        }
+    }
+
+    private func button(_ symbol: String, _ help: String, action: @escaping () -> Void) -> some View {
+        ChromeButton(symbol: symbol, help: help, size: 11) { withAnimation(Theme.quick) { action() } }
+    }
+}
+
+/// Right click on a row: the same gestures, and « Déplacer vers ».
+private struct RowMenu: View {
+    let message: MessageSummary
+    @Environment(MailModel.self) private var model
+
+    var body: some View {
+        Button(message.isSeen ? "Marquer comme non lu" : "Marquer comme lu") { model.toggleSeen(message) }
+        Button(message.isFlagged ? "Désépingler" : "Épingler en tête") { model.togglePinned(message) }
+        Divider()
+        Button("Archiver") { model.archiveSelected(message) }
+        Menu("Déplacer vers") {
+            ForEach(model.destinations(for: message)) { mailbox in
+                Button(String(repeating: "   ", count: mailbox.role == .other ? mailbox.depth : 0) + mailbox.displayName) { model.move(message, to: mailbox) }
+            }
+        }
+        Divider()
+        Button("Mettre à la corbeille") { model.trashSelected(message) }
     }
 }
 
