@@ -42,6 +42,27 @@ enum DebugLaunch {
         }
     }
 
+    /// A draft in « Drafts » of the first demo account, as Void Mail saves one.
+    static let demoDraft = """
+    From: Steven <steven@icloud.com>
+    To: Camille Moreau <camille@exemple.fr>
+    Bcc: julien@exemple.fr
+    Subject: Programme de samedi
+    In-Reply-To: <101@demo>
+    MIME-Version: 1.0
+    Content-Type: text/plain; charset=utf-8
+
+    Salut Camille,
+
+    Pour samedi :
+
+    - le train de **9 h 11**
+    - [ ] réserver le Palais de la Pena
+    - [x] imprimer les billets
+
+    > Les billets : https://www.cp.pt
+    """
+
     /// Bodies of two demo messages: plain text, and HTML with a remote image.
     static let demoBodies: [Int: String] = [
         101: """

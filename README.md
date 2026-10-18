@@ -119,6 +119,7 @@ Un geste par message, au clavier dans la liste, par les boutons au bout de la li
 - **Envoi différé** : « Envoyer » (⌘↩) ferme la fenêtre ; le message part **10 secondes** plus tard — « Envoi de « … » · Annuler » en bas de la liste, ou ⌘Z, le rouvre. Quitter l'app l'envoie d'abord. S'il échoue, il revient dans sa fenêtre, rien n'est perdu.
 - **Envoyés** : après l'envoi, Void Mail cherche le message dans Envoyés par son `Message-ID` (2, puis 4, puis 6 secondes plus tard) ; les serveurs qui y rangent eux-mêmes une copie (Gmail, Microsoft) n'en ont donc pas deux, et chez les autres — Proton Mail Bridge compris, vérifié — la copie est déposée par IMAP `APPEND`.
 - **Brouillons** : fermer la fenêtre sans envoyer range le message dans Brouillons (pas de bouton « Enregistrer ») ; la corbeille au bout de la première ligne le jette. Un message laissé vide est simplement oublié.
+- **Reprendre un brouillon** : un message de Brouillons s'ouvre avec « Continuer » à la place des réponses (aussi ↩ dans la liste, ou ⌘R) : il revient dans une fenêtre d'écriture avec ses destinataires, ses Cci, son objet, son fil, ses fichiers et **sa mise en forme** (sa version texte est le Markdown qu'il a été enregistré). Enregistré de nouveau ou envoyé, il remplace l'ancien dans Brouillons.
 - **`mailto:`** : Void Mail ouvre les liens `mailto:` (destinataire, objet, texte, Cc) dans un nouveau message.
 
 ## État (honnête)
@@ -144,7 +145,7 @@ Un geste par message, au clavier dans la liste, par les boutons au bout de la li
 - ☑️ Fenêtre d'écriture, actions au survol (captures en démonstration)
 - ☑️ **Envoi réel (SMTP)** : vérifié à la main avec le compte Proton (via Bridge), le 18 oct. 2026
 - 🟡 Copie dans Envoyés (recherche puis `APPEND`), brouillon rangé à la fermeture : pas encore vérifiés sur un vrai compte
-- ❌ Messages plus anciens que les 300 derniers, lecture épurée, gestes sur plusieurs messages à la fois, rouvrir un brouillon de Brouillons pour le continuer, signature
+- ❌ Messages plus anciens que les 300 derniers, lecture épurée, gestes sur plusieurs messages à la fois, signature
 - ❌ Ponts avec Void et Void Notes (« Envoyer vers Void Notes », « Envoyer la page par mail »)
 - ❌ iPhone
 
@@ -154,9 +155,9 @@ Un geste par message, au clavier dans la liste, par les boutons au bout de la li
 "build/DerivedData/Build/Products/Debug/Void Mail.app/Contents/MacOS/Void Mail" -selfTest YES
 ```
 
-117 vérifications avec `-network YES` (113 sans). Le code de sortie est le nombre d'échecs. Le test ne touche ni aux vrais comptes, ni aux préférences, ni au trousseau.
+121 vérifications avec `-network YES` (117 sans). Le code de sortie est le nombre d'échecs. Le test ne touche ni aux vrais comptes, ni aux préférences, ni au trousseau.
 
-Autres arguments (builds Debug) : `-demo YES` (deux comptes de démonstration et leur Réception ; `-openUID 101` ou `103` ouvre un message texte ou HTML, `-gesture archive`, `trash` ou `pin` y applique un geste, `-hoverUID 103` montre les actions au survol, `-compose reply` ou `new` ouvre une fenêtre d'écriture, `-closeCompose YES` la ferme et dit si l'app a tenu, `-composeTo l` y tape « l » dans le champ À pour montrer les suggestions, `-showFormat YES` y ouvre le panneau Aa), `-addAccount YES -address <adresse>` (la feuille ouverte), `-theme light -accent pink -tint peach` (l'apparence), `-snapshot YES` (une capture de la fenêtre, ou de la feuille ouverte, en PNG base64 sur la sortie standard, la seule sortie que le bac à sable laisse lire) :
+Autres arguments (builds Debug) : `-demo YES` (deux comptes de démonstration et leur Réception ; `-openUID 101` ou `103` ouvre un message texte ou HTML, `-gesture archive`, `trash` ou `pin` y applique un geste, `-hoverUID 103` montre les actions au survol, `-compose reply` ou `new` ouvre une fenêtre d'écriture, `-closeCompose YES` la ferme et dit si l'app a tenu, `-composeTo l` y tape « l » dans le champ À pour montrer les suggestions, `-showFormat YES` y ouvre le panneau Aa, `-mailbox Drafts -openUID 501` montre un brouillon et `-compose continue` le reprend), `-addAccount YES -address <adresse>` (la feuille ouverte), `-theme light -accent pink -tint peach` (l'apparence), `-snapshot YES` (une capture de la fenêtre, ou de la feuille ouverte, en PNG base64 sur la sortie standard, la seule sortie que le bac à sable laisse lire) :
 
 ```bash
 "build/DerivedData/Build/Products/Debug/Void Mail.app/Contents/MacOS/Void Mail" -demo YES -snapshot YES | sed -n 's/^SNAPSHOT://p' | base64 -d > fenetre.png

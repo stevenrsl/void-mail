@@ -75,6 +75,9 @@ struct MainWindowView: View {
                 case "reply":
                     try? await Task.sleep(for: .milliseconds(300))
                     if let id = model.replyDraft(all: false) { openWindow(id: "compose", value: id) }
+                case "continue":
+                    try? await Task.sleep(for: .milliseconds(300))
+                    if let id = model.continueDraft() { openWindow(id: "compose", value: id) }
                 case "new":
                     let to = UserDefaults.standard.string(forKey: "composeTo") ?? "Camille Moreau <camille@exemple.fr>"
                     if let id = outbox.newDraft(account: model.currentAccount, to: to) { openWindow(id: "compose", value: id) }

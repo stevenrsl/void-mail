@@ -236,6 +236,20 @@ final class MailModel {
 
     var canReply: Bool { selectedMessage != nil && openMessage != nil }
 
+    /// The open message is a draft (a message of Brouillons, or one marked `\Draft`).
+    var isDraft: Bool {
+        guard let summary = selectedMessage else { return false }
+        return summary.flags.contains("\\Draft") || store.account(summary.account)?.mailboxes.first { $0.path == summary.mailbox }?.role == .drafts
+    }
+
+    /// The open draft, in a window to write on; its draft's id.
+    func continueDraft() -> UUID? {
+        guard isDraft, let summary = selectedMessage, let message = openMessage, let account = store.account(summary.account) else { return nil }
+        // Already being continued: that window.
+        if let open = Outbox.shared.drafts.values.first(where: { $0.replaces == Draft.Origin(mailbox: summary.mailbox, uid: summary.uid) }) { return open.id }
+        return Outbox.shared.add(Draft.resume(message, summary: summary, account: account))
+    }
+
     // MARK: Gestures
 
     func archivePath(of account: MailAccount) -> String? { account.mailboxes.first { $0.role == .archive }?.path }
@@ -446,6 +460,21 @@ final class MailModel {
             }
         }
         await reloadList()
+        if let first = store.accounts.first {
+            let draft = MessageEnvelope(uid: 501, flags: ["\\Seen", "\\Draft"], date: Date().addingTimeInterval(-1800), size: 600, subject: "Programme de samedi",
+                                        from: [MailAddress(name: "Steven", address: first.address)], to: [MailAddress(name: "Camille Moreau", address: "camille@exemple.fr")],
+                                        cc: [], messageID: nil)
+            await cache.insert([draft], account: first.id, mailbox: "Drafts")
+            if let summary = await cache.messages(account: first.id, mailbox: "Drafts").first {
+                let raw = Data(DebugLaunch.demoDraft.replacingOccurrences(of: "\n", with: "\r\n").utf8)
+                await cache.storeBody(raw, text: "", message: summary.id)
+            }
+        }
+        // `-mailbox Drafts`: that mailbox open.
+        if let mailbox = UserDefaults.standard.string(forKey: "mailbox") {
+            selectedMailbox = mailbox
+            await reloadList()
+        }
         counts = ["INBOX": .init(messages: 1_284, unseen: 2), "Archive": .init(messages: 3_410, unseen: 0), "Junk": .init(messages: 14, unseen: 3),
                   "Factures": .init(messages: 52, unseen: 1)]
         // `-openUID 103`: that message open.
@@ -458,6 +487,7 @@ final class MailModel {
         case "pin": togglePinned()
         default: break
         }
+        // `-openUID 501 -mailbox Drafts -compose continue`: the draft continued (see MainWindowView).
     }
     #endif
 }

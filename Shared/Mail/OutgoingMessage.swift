@@ -21,6 +21,14 @@ struct Draft: Identifiable, Equatable {
     var forwardedFiles: [File] = []
     var inReplyTo: String?
     var references: [String] = []
+    /// A draft continued from Brouillons: that message there, replaced when this one is saved
+    /// again or sent.
+    var replaces: Origin?
+
+    struct Origin: Equatable {
+        var mailbox: String
+        var uid: Int
+    }
     /// What the window starts with, to tell a draft worth keeping from an untouched one.
     var isEmpty: Bool {
         to.isEmpty && cc.isEmpty && bcc.isEmpty && subject.isEmpty
@@ -70,6 +78,20 @@ struct Draft: Identifiable, Equatable {
         draft.content = quoted(intro: intro, text: message.readableText)
         draft.inReplyTo = message.messageID
         draft.references = message.references + [message.messageID].compactMap { $0 }
+        return draft
+    }
+
+    /// A message of Brouillons, to be continued: its recipients, subject and fields, its text
+    /// back in the editor's format (the plain version is the Markdown it was saved as), its files.
+    static func resume(_ message: MailMessage, summary: MessageSummary, account: MailAccount) -> Draft {
+        var draft = Draft(account: account.id, to: format(message.to), cc: format(message.cc), bcc: format(message.bcc),
+                          subject: message.subject.isEmpty ? summary.subject : message.subject)
+        let text = message.plainText.map { $0.replacingOccurrences(of: "\r\n", with: "\n") } ?? message.readableText
+        draft.content = NoteMarkdown.content(fromMarkdown: text.trimmingCharacters(in: .newlines))
+        draft.forwardedFiles = message.attachments.map { File(name: $0.filename, data: $0.data, contentType: $0.contentType) }
+        draft.inReplyTo = message.inReplyTo
+        draft.references = message.references
+        draft.replaces = Origin(mailbox: summary.mailbox, uid: summary.uid)
         return draft
     }
 
@@ -132,7 +154,9 @@ enum MessageComposer {
         var recipients: [String]
     }
 
-    static func build(_ draft: Draft, from account: MailAccount, files: [Draft.File], date: Date = Date(), boundarySeed: String = UUID().uuidString) -> Built {
+    /// `asDraft`: the Bcc are kept in a header, for the draft to be continued with them.
+    static func build(_ draft: Draft, from account: MailAccount, files: [Draft.File], date: Date = Date(), boundarySeed: String = UUID().uuidString,
+                      asDraft: Bool = false) -> Built {
         let domain = account.address.split(separator: "@").last.map(String.init) ?? "void.mail"
         let messageID = "<\(UUID().uuidString.lowercased())@\(domain)>"
         var headers: [(String, String)] = [
@@ -141,6 +165,8 @@ enum MessageComposer {
         let to = MailAddress.parseHeader(draft.to), cc = MailAddress.parseHeader(draft.cc)
         if !to.isEmpty { headers.append(("To", to.map(address).joined(separator: ", "))) }
         if !cc.isEmpty { headers.append(("Cc", cc.map(address).joined(separator: ", "))) }
+        let bcc = MailAddress.parseHeader(draft.bcc)
+        if asDraft, !bcc.isEmpty { headers.append(("Bcc", bcc.map(address).joined(separator: ", "))) }
         headers += [
             ("Subject", encodeWord(draft.subject)),
             ("Date", dateFormatter.string(from: date)),

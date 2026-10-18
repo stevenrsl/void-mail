@@ -140,6 +140,7 @@ final class Outbox {
             try await smtp.send(from: built.envelopeFrom, to: built.recipients, data: built.data)
             await smtp.quit()
             await keepSentCopy(built, account: account)
+            await removeReplaced(draft, account: account)
             cleanUp(draft)
         } catch {
             // Nothing left: the message comes back in its window, to try again.
@@ -175,15 +176,30 @@ final class Outbox {
         await session.close()
     }
 
+    /// The draft of Brouillons this one was continued from: gone, now that this one is saved or sent.
+    private func removeReplaced(_ draft: Draft, account: MailAccount) async {
+        guard let origin = draft.replaces else { return }
+        let session = AccountSession(account: account)
+        do {
+            try await session.delete(uids: [origin.uid], from: origin.mailbox)
+            await cache.removeMessages(account: account.id, mailbox: origin.mailbox, uids: [origin.uid])
+            await MailModel.shared.mailboxChanged(origin.mailbox, account: account.id)
+        } catch {
+            sendError = "L'ancienne version du brouillon est restée dans Brouillons : \(Self.describe(error))"
+        }
+        await session.close()
+    }
+
     private func saveToDrafts(_ draft: Draft, account: MailAccount) async throws {
         #if DEBUG
         if DebugLaunch.isRequested { return }
         #endif
         guard let mailbox = account.mailboxes.first(where: { $0.role == .drafts }) else { return }
-        let built = MessageComposer.build(draft, from: account, files: MessageComposer.files(of: draft))
+        let built = MessageComposer.build(draft, from: account, files: MessageComposer.files(of: draft), asDraft: true)
         let session = AccountSession(account: account)
         try await session.append(built.data, to: mailbox.path, flags: ["\\Draft", "\\Seen"])
         await session.close()
+        await removeReplaced(draft, account: account)
         await MailModel.shared.mailboxChanged(mailbox.path, account: account.id)
     }
 

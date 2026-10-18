@@ -127,10 +127,19 @@ private struct MessageActions: View {
         let inArchive = account.flatMap(model.archivePath(of:)) == summary.mailbox
         let inTrash = account.flatMap(model.trashPath(of:)).map { $0 == summary.mailbox } ?? true
         HStack(spacing: 2) {
-            ChromeButton(symbol: "arrowshape.turn.up.left", help: "Répondre (⌘R)", disabled: !model.canReply) { open(model.replyDraft(all: false)) }
-            ChromeButton(symbol: "arrowshape.turn.up.left.2", help: "Répondre à tous (⇧⌘R)", disabled: !model.canReply) { open(model.replyDraft(all: true)) }
-            ChromeButton(symbol: "arrowshape.turn.up.right", help: "Transférer (⇧⌘F)", disabled: !model.canReply) { open(model.forwardDraft()) }
-            Rectangle().fill(Theme.stroke).frame(width: 1, height: 16).padding(.horizontal, 4)
+            if model.isDraft {
+                // A draft is continued, not answered.
+                Button("Continuer") { open(model.continueDraft()) }
+                    .primaryButton()
+                    .disabled(model.openMessage == nil)
+                    .help("Continuer ce brouillon (↩)")
+                    .padding(.trailing, 6)
+            } else {
+                ChromeButton(symbol: "arrowshape.turn.up.left", help: "Répondre (⌘R)", disabled: !model.canReply) { open(model.replyDraft(all: false)) }
+                ChromeButton(symbol: "arrowshape.turn.up.left.2", help: "Répondre à tous (⇧⌘R)", disabled: !model.canReply) { open(model.replyDraft(all: true)) }
+                ChromeButton(symbol: "arrowshape.turn.up.right", help: "Transférer (⇧⌘F)", disabled: !model.canReply) { open(model.forwardDraft()) }
+                Rectangle().fill(Theme.stroke).frame(width: 1, height: 16).padding(.horizontal, 4)
+            }
             ChromeButton(symbol: summary.isFlagged ? "pin.fill" : "pin", help: summary.isFlagged ? "Désépingler (⌃⌘P)" : "Épingler en tête (⌃⌘P)",
                          active: summary.isFlagged) { model.togglePinned() }
             ChromeButton(symbol: summary.isSeen ? "envelope.badge" : "envelope.open", help: summary.isSeen ? "Marquer comme non lu (U)" : "Marquer comme lu (U)") { model.toggleSeen() }

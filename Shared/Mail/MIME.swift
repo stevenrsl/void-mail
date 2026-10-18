@@ -289,8 +289,11 @@ struct MailMessage {
     var replyTo: [MailAddress]
     var to: [MailAddress]
     var cc: [MailAddress]
+    /// Only in a draft (a sent message has none).
+    var bcc: [MailAddress]
     var date: Date?
     var messageID: String?
+    var inReplyTo: String?
     /// The thread it answers, oldest first (its References header).
     var references: [String]
     var plainText: String?
@@ -304,6 +307,8 @@ struct MailMessage {
         to = root.header("To").map(MailAddress.parseHeader) ?? []
         cc = root.header("Cc").map(MailAddress.parseHeader) ?? []
         replyTo = root.header("Reply-To").map(MailAddress.parseHeader) ?? []
+        bcc = root.header("Bcc").map(MailAddress.parseHeader) ?? []
+        inReplyTo = root.header("In-Reply-To")?.trimmingCharacters(in: .whitespaces)
         date = root.header("Date").flatMap(MIMEHeader.date)
         messageID = root.header("Message-ID")?.trimmingCharacters(in: .whitespaces)
         references = (root.header("References") ?? "").split(whereSeparator: \.isWhitespace).map(String.init).filter { $0.hasPrefix("<") }

@@ -61,6 +61,12 @@ struct MessageList: View {
             }
             return .handled
         }
+        // ↩ on a draft: continue it.
+        .onKeyPress(.return) {
+            guard model.isDraft, let id = model.continueDraft() else { return .ignored }
+            openWindow(id: "compose", value: id)
+            return .handled
+        }
         .onKeyPress(.delete) { model.trashSelected(); return .handled }
         .onKeyPress(.deleteForward) { model.trashSelected(); return .handled }
         .overlay(alignment: .bottom) {

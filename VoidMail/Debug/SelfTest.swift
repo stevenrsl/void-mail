@@ -228,6 +228,16 @@ enum SelfTest {
         let all = Draft.reply(to: original, summary: summary, account: account, all: true)
         check(all.to.contains("julien@exemple.fr") && !all.to.contains("hello@stevenrsl.eu") && all.cc == "ana@exemple.fr", "répondre à tous, sans soi-même")
         check(Draft.reply(to: original, summary: MessageSummary(id: 1, account: account.id, mailbox: "INBOX", uid: 1, date: Date(), subject: "Re: Sintra", sender: summary.sender, recipients: "", flags: [], size: 0), account: account, all: false).subject == "Re: Sintra", "pas de « Re: Re: »")
+        // A draft saved, then continued: the same fields, the same formatting.
+        var saved = Draft(account: account.id, to: "Camille <camille@exemple.fr>", bcc: "j@e.fr", subject: "Programme",
+                          content: NoteMarkdown.content(fromMarkdown: "Pour samedi :\n\n- le train de **9 h 11**\n- [ ] Pena\n\n> cité"))
+        saved.inReplyTo = "<m2@exemple.fr>"
+        let savedBuilt = MessageComposer.build(saved, from: account, files: [], asDraft: true)
+        let reopened = Draft.resume(MailMessage(raw: savedBuilt.data), summary: MessageSummary(id: 9, account: account.id, mailbox: "Drafts", uid: 77, date: Date(), subject: "Programme", sender: summary.sender, recipients: "", flags: ["\\Draft"], size: 0), account: account)
+        check(reopened.to == "Camille <camille@exemple.fr>" && reopened.bcc == "j@e.fr" && reopened.subject == "Programme" && reopened.inReplyTo == "<m2@exemple.fr>", "brouillon repris : destinataires, Cci, objet, fil")
+        check(reopened.content == saved.content, "brouillon repris : même texte, même mise en forme")
+        check(reopened.replaces == Draft.Origin(mailbox: "Drafts", uid: 77), "brouillon repris : l'ancien sera remplacé")
+        check(!String(decoding: MessageComposer.build(saved, from: account, files: []).data, as: UTF8.self).contains("Bcc:"), "Cci gardés dans un brouillon, jamais dans un envoi")
         let forward = Draft.forward(original, summary: summary, account: account)
         check(forward.subject == "Fwd: Sintra" && forward.to.isEmpty && forward.content.text.contains("Message transféré"), "transférer")
         check(Outbox.shared.problem(with: Draft(account: account.id)) == "Ajoutez au moins un destinataire."

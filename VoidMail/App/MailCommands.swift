@@ -26,9 +26,15 @@ struct MailCommands: Commands {
                 .keyboardShortcut("n", modifiers: [.command, .option])
         }
         CommandMenu("Message") {
-            Button("Répondre") { open(model.replyDraft(all: false)) }
-                .keyboardShortcut("r")
-                .disabled(!model.canReply)
+            if model.isDraft {
+                Button("Continuer le brouillon") { open(model.continueDraft()) }
+                    .keyboardShortcut("r")
+                    .disabled(!model.canReply)
+            } else {
+                Button("Répondre") { open(model.replyDraft(all: false)) }
+                    .keyboardShortcut("r")
+                    .disabled(!model.canReply)
+            }
             Button("Répondre à tous") { open(model.replyDraft(all: true)) }
                 .keyboardShortcut("r", modifiers: [.command, .shift])
                 .disabled(!model.canReply)
