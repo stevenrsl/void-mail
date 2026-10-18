@@ -14,6 +14,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if UserDefaults.standard.bool(forKey: "addAccount") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { MainActor.assumeIsolated { MailModel.shared.addingAccount = true } }
         }
+        // `-closeCompose YES` (with `-compose new`): the message being written is closed, as with
+        // its close button; « fermeture OK » is printed if the app is still there afterwards.
+        if UserDefaults.standard.bool(forKey: "closeCompose") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                NSApp.windows.first { $0.isVisible && $0.title != "Void Mail" && $0.contentView != nil }?.performClose(nil)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                    print(NSApp.windows.contains { $0.isVisible && $0.title.hasPrefix("Nouveau") } ? "fenêtre encore ouverte" : "fermeture OK")
+                    exit(0)
+                }
+            }
+        }
         // `-snapshot YES`: a picture of the window, as base64 PNG on the standard output (the
         // sandbox lets the app write nowhere a script can read), then quit; the sheet
         // rather than the window when one is open.

@@ -31,7 +31,7 @@ struct ComposeView: View {
             VStack(spacing: 0) {
                 if store.accounts.count > 1 {
                     FieldRow(label: "De") {
-                        Picker("De", selection: binding(\.account)) {
+                        Picker("De", selection: binding(\.account, draft)) {
                             ForEach(store.accounts) { Text($0.name.isEmpty ? $0.address : "\($0.name) <\($0.address)>").tag($0.id) }
                         }
                         .labelsHidden()
@@ -39,7 +39,7 @@ struct ComposeView: View {
                         .fixedSize()
                     }
                 }
-                AddressField(label: "À", text: binding(\.to), account: draft.account) {
+                AddressField(label: "À", text: binding(\.to, draft), account: draft.account) {
                     if !showsCopies {
                         Button("Cc, Cci") { withAnimation(Theme.quick) { showsCopies = true } }
                             .buttonStyle(.plain)
@@ -48,11 +48,11 @@ struct ComposeView: View {
                     }
                 }
                 if showsCopies {
-                    AddressField(label: "Cc", text: binding(\.cc), account: draft.account) { EmptyView() }
-                    AddressField(label: "Cci", text: binding(\.bcc), account: draft.account) { EmptyView() }
+                    AddressField(label: "Cc", text: binding(\.cc, draft), account: draft.account) { EmptyView() }
+                    AddressField(label: "Cci", text: binding(\.bcc, draft), account: draft.account) { EmptyView() }
                 }
                 FieldRow(label: "Objet") {
-                    TextField("", text: binding(\.subject), prompt: Text("Objet"))
+                    TextField("", text: binding(\.subject, draft), prompt: Text("Objet"))
                         .textFieldStyle(.plain)
                         .font(.system(size: 15, weight: .semibold))
                 }
@@ -123,8 +123,11 @@ struct ComposeView: View {
         dismiss()
     }
 
-    private func binding<Value>(_ keyPath: WritableKeyPath<Draft, Value>) -> Binding<Value> {
-        Binding(get: { outbox.drafts[id]![keyPath: keyPath] }, set: { value in outbox.update(id) { $0[keyPath: keyPath] = value } })
+    /// A field of the draft. While the window closes, the draft may already be sent, thrown away
+    /// or put in Brouillons: the field then reads what it showed last (`shown`).
+    private func binding<Value>(_ keyPath: WritableKeyPath<Draft, Value>, _ shown: Draft) -> Binding<Value> {
+        Binding(get: { (outbox.drafts[id] ?? shown)[keyPath: keyPath] },
+                set: { value in outbox.update(id) { $0[keyPath: keyPath] = value } })
     }
 }
 
