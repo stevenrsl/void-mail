@@ -65,9 +65,11 @@ struct MessageList: View {
                 Text(model.query.isEmpty ? (model.currentMailbox?.displayName ?? "") : "Recherche")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Theme.primaryText)
-                Text(model.currentAccount?.address ?? "")
+                Text(subtitle)
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(Theme.secondaryText)
+                    .lineLimit(1)
+                    .help(model.currentAccount?.address ?? "")
             }
             Spacer()
             if model.syncing {
@@ -79,6 +81,19 @@ struct MessageList: View {
         .padding(.horizontal, 18)
         .padding(.top, 14)
         .padding(.bottom, 10)
+    }
+
+    /// « 12 non lus · 1 284 messages » for the open mailbox (the server's count, not only the
+    /// messages brought here); the number found during a search.
+    private var subtitle: String {
+        if !model.query.isEmpty {
+            let found = model.messages.count
+            return found == 1 ? "1 message trouvé" : "\(found.formatted()) messages trouvés"
+        }
+        guard let path = model.selectedMailbox, let count = model.counts[path] else { return model.currentAccount?.address ?? "" }
+        let total = count.messages == 1 ? "1 message" : "\(count.messages.formatted()) messages"
+        guard count.unseen > 0 else { return total }
+        return "\(count.unseen.formatted()) non lu\(count.unseen > 1 ? "s" : "") · \(total)"
     }
 
     @ViewBuilder private var empty: some View {

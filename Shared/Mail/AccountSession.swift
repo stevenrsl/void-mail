@@ -56,6 +56,22 @@ actor AccountSession {
         }
     }
 
+    /// The counts of the mailboxes that can be opened, one STATUS each; a mailbox that refuses
+    /// is left out.
+    func counts(_ paths: [String]) async throws -> [String: IMAPClient.Count] {
+        try await withConnection { client in
+            var result: [String: IMAPClient.Count] = [:]
+            for path in paths {
+                do {
+                    if let count = try await client.status(path) { result[path] = count }
+                } catch MailError.unexpected {
+                    continue
+                }
+            }
+            return result
+        }
+    }
+
     func close() async {
         await client?.logout()
         client = nil

@@ -91,6 +91,9 @@ enum SelfTest {
         let body = IMAPLine("* 1 FETCH (UID 7 BODY[] NIL)").values
         check(body.count == 4 && body[3].pairs["BODY[]"] == .nilValue, "BODY[] reconnu comme une clé, NIL")
         check(IMAPLine("* 1 FETCH (BODY[HEADER.FIELDS (DATE FROM)] \"x\")").values[3].pairs.keys.contains("BODY[HEADER.FIELDS (DATE FROM)]"), "crochets avec espaces dans un atome")
+        check(IMAPClient.parseStatus(IMAPLine("* STATUS \"Folders/Factures\" (MESSAGES 231 UNSEEN 12)")) == .init(messages: 231, unseen: 12), "STATUS : messages et non lus")
+        check(IMAPClient.parseStatus(IMAPLine("* STATUS INBOX (UNSEEN 3 MESSAGES 9)")) == .init(messages: 9, unseen: 3), "STATUS : dans n'importe quel ordre")
+        check(!MailboxSidebar.showsUnseen(Mailbox(path: "All Mail", delimiter: "/", attributes: ["\\All"])) && MailboxSidebar.showsUnseen(Mailbox(path: "INBOX", delimiter: "/", attributes: [])), "non lus montrés là où il y a quelque chose à faire")
         check(IMAPClient.code("UIDVALIDITY", in: "* OK [UIDVALIDITY 3857529045] UIDs valid") == 3857529045, "UIDVALIDITY")
     }
 
@@ -254,7 +257,10 @@ enum SelfTest {
     private static func mailboxRoles() {
         print("Rôle des boîtes")
         check(Mailbox(path: "inbox", delimiter: "/", attributes: []).role == .inbox, "INBOX quelle que soit la casse")
-        check(Mailbox(path: "[Gmail]/Tous les messages", delimiter: "/", attributes: ["\\All"]).role == .archive, "\\All tient lieu d'archives")
+        check(Mailbox(path: "All Mail", delimiter: "/", attributes: ["\\All"]).role == .all, "\\All : tous les messages, pas les archives")
+        check(Mailbox(path: "Folders", delimiter: "/", attributes: ["\\Noselect"]).displayName == "Dossiers"
+              && Mailbox(path: "Labels", delimiter: "/", attributes: []).displayName == "Libellés"
+              && Mailbox(path: "Folders/Labels", delimiter: "/", attributes: []).displayName == "Labels", "dossiers et libellés de Proton en français, au premier niveau seulement")
         check(Mailbox.guessedAttributes(for: "Deleted Messages") == ["\\Trash"], "rôle deviné sans SPECIAL-USE")
         var account = MailAccount(name: "", address: "a@icloud.com", preset: ProviderDirectory.preset(for: "a@icloud.com"))
         account.mailboxes = ["Voyages", "Trash", "INBOX", "Sent", "Archive", "Drafts"]

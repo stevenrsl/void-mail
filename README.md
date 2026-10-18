@@ -1,6 +1,6 @@
 # Void Mail
 
-**Un courrier qui s'efface derrière le message.** Version **0.0.2** (préversion : lire). Void Mail est le troisième compagnon de Void et de [Void Notes](../Void%20Notes) : même palette, même chrome sombre, mêmes réglages d'apparence, rien de superflu à l'écran. Le projet et ses choix sont décrits dans [CONCEPT.md](CONCEPT.md).
+**Un courrier qui s'efface derrière le message.** Version **0.0.3** (préversion : lire). Void Mail est le troisième compagnon de Void et de [Void Notes](../Void%20Notes) : même palette, même chrome sombre, mêmes réglages d'apparence, rien de superflu à l'écran. Le projet et ses choix sont décrits dans [CONCEPT.md](CONCEPT.md).
 
 - Swift + SwiftUI, AppKit là où c'est utile (fenêtre, barre de titre)
 - Mac : Apple silicon, macOS 14 minimum. iPhone : plus tard, sur `Shared/`
@@ -68,7 +68,7 @@ Réglages (⌘,) → Comptes, ou ⇧⌘N, ou le « + » en bas de la barre laté
 ## La fenêtre
 
 La mise en page de Void Notes, avec une colonne de plus :
-- les boîtes sur le cadre : Réception, Archives, Envoyés, Brouillons, Indésirables, Corbeille (reconnues par leurs attributs SPECIAL-USE, ou par leur nom sur les serveurs qui n'en ont pas), un trait, puis les autres dossiers du serveur en gris, en retrait selon leur profondeur, avec leurs noms accentués décodés (UTF-7 modifié) ;
+- les boîtes sur le cadre : Réception, Archives, Envoyés, Brouillons, Indésirables, Corbeille, Tous les messages (reconnues par leurs attributs SPECIAL-USE, ou par leur nom sur les serveurs qui n'en ont pas), un trait, puis les autres dossiers du serveur en gris, en retrait selon leur profondeur, avec leurs noms accentués décodés (UTF-7 modifié) ; « Folders » et « Labels » de Proton Mail Bridge deviennent « Dossiers » et « Libellés » ;
 - les messages et le message, sur la feuille posée sur le cadre (voir « Lire ») ;
 - les comptes en bas de la barre latérale, comme les espaces de Void Notes (⌃⌘← / ⌃⌘→ pour passer de l'un à l'autre).
 
@@ -76,6 +76,7 @@ Réglages → Apparence : thème, couleur d'accent et teinte de la fenêtre, **l
 
 ## Lire
 
+- **Compteurs** : les non lus à droite de chaque boîte (pas pour Envoyés, Brouillons, Corbeille ni « Tous les messages »), et sous le nom de la boîte ouverte « 12 non lus · 1 284 messages » — les chiffres du serveur (STATUS), relus à chaque relève ; lire un message les met à jour aussitôt.
 - **La liste** : expéditeur et date (« 15:41 », « hier », « vendredi », « 2 oct. »), objet ; non lu en clair avec un point d'accent, lu en gris. ↑ ↓ ou J K pour passer d'un message à l'autre, U (ou ⇧⌘U) pour lu / non lu, ⌘R pour relever.
 - **Relève** : à l'ouverture d'une boîte, au retour dans l'app et par ⌘R. La première visite d'une boîte rapporte ses **300 derniers messages** ; ensuite seuls les nouveaux, les drapeaux des autres, et ce qui a disparu du serveur est retiré. Une connexion IMAP par compte, gardée ouverte, rouverte une fois si elle est tombée.
 - **Le message** : l'objet en titre, la ligne de l'expéditeur et de la date en petite chasse fixe, comme les dates d'une note. Ouvrir un message le marque lu, sur le serveur aussi. Un texte brut prend la typographie de l'app, ses adresses deviennent des liens ; un message HTML garde sa page blanche, sur une carte, **sans JavaScript, sans cookies, sans rien charger d'Internet** (une politique de sécurité de contenu passe devant celle du message). « Charger les images » les autorise pour ce message. Les images intégrées (`cid:`) s'affichent toujours. Un lien s'ouvre dans le navigateur.
@@ -99,7 +100,7 @@ Réglages → Apparence : thème, couleur d'accent et teinte de la fenêtre, **l
 - ✅ Réponses FETCH (enveloppes, littéraux, drapeaux), MIME (parties imbriquées, quoted-printable Latin-1, images `cid:`, pièces jointes base64, pixel espion repéré), dates de la liste, politique HTML, cache et recherche (ordre, accents, mots partiels, retrait, UIDVALIDITY)
 - ☑️ **Connexion complète d'un vrai compte** : vérifiée à la main avec un compte Proton (domaine perso, via Bridge) — boîtes listées, SMTP authentifié
 - ☑️ Liste des messages, message texte et HTML, bandeau des images, pièces jointes (captures ci-dessus, comptes de démonstration)
-- 🟡 **Relève sur un vrai compte** : écrite, pas encore essayée ; à faire sur le compte Proton
+- ☑️ **Relève sur un vrai compte** : vérifiée à la main sur le compte Proton (Réception, dossiers imbriqués)
 - 🟡 **OAuth Microsoft** : écrit, jamais exécuté de bout en bout (pas d'identifiant Azure, pas de compte Outlook)
 - ❌ `IDLE` (les nouveaux messages arrivent à ⌘R ou au retour dans l'app), messages plus anciens que les 300 derniers
 - ❌ Lecture épurée, archiver / supprimer, épingler
@@ -113,7 +114,7 @@ Réglages → Apparence : thème, couleur d'accent et teinte de la fenêtre, **l
 "build/DerivedData/Build/Products/Debug/Void Mail.app/Contents/MacOS/Void Mail" -selfTest YES
 ```
 
-86 vérifications avec `-network YES` (82 sans). Le code de sortie est le nombre d'échecs. Le test ne touche ni aux vrais comptes, ni aux préférences, ni au trousseau.
+90 vérifications avec `-network YES` (86 sans). Le code de sortie est le nombre d'échecs. Le test ne touche ni aux vrais comptes, ni aux préférences, ni au trousseau.
 
 Autres arguments (builds Debug) : `-demo YES` (deux comptes de démonstration et leur Réception ; `-openUID 101` ou `103` ouvre un message texte ou HTML), `-addAccount YES -address <adresse>` (la feuille ouverte), `-theme light -accent pink -tint peach` (l'apparence), `-snapshot YES` (une capture de la fenêtre, ou de la feuille ouverte, en PNG base64 sur la sortie standard, la seule sortie que le bac à sable laisse lire) :
 

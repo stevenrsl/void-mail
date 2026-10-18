@@ -84,6 +84,28 @@ final class IMAPClient {
         return selection
     }
 
+    struct Count: Equatable {
+        var messages: Int
+        var unseen: Int
+    }
+
+    /// How many messages a mailbox holds, and how many are unread, without opening it.
+    func status(_ path: String) async throws -> Count? {
+        for line in try await command("STATUS \(Self.quoted(ModifiedUTF7.encode(path))) (MESSAGES UNSEEN)") {
+            if let count = Self.parseStatus(line) { return count }
+        }
+        return nil
+    }
+
+    /// `* STATUS "INBOX" (MESSAGES 231 UNSEEN 12)`.
+    static func parseStatus(_ line: IMAPLine) -> Count? {
+        let values = line.values
+        guard values.count >= 4, values[1].text?.uppercased() == "STATUS" else { return nil }
+        let items = values[3].pairs
+        guard let messages = items["MESSAGES"]?.number else { return nil }
+        return Count(messages: messages, unseen: items["UNSEEN"]?.number ?? 0)
+    }
+
     static let envelopeItems = "(UID FLAGS INTERNALDATE RFC822.SIZE ENVELOPE)"
 
     /// Envelopes by UID range (`123:*`), or the last `count` messages by position (first visit).

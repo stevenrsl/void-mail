@@ -14,7 +14,8 @@ struct MailboxSidebar: View {
                     if let account = model.currentAccount {
                         let mailboxes = account.sortedMailboxes
                         ForEach(mailboxes) { mailbox in
-                            MailboxRow(mailbox: mailbox, selected: model.selectedMailbox == mailbox.path) {
+                            MailboxRow(mailbox: mailbox, selected: model.selectedMailbox == mailbox.path,
+                                       unseen: Self.showsUnseen(mailbox) ? model.counts[mailbox.path]?.unseen ?? 0 : 0) {
                                 model.selectMailbox(mailbox.path)
                             }
                             .disabled(!mailbox.isSelectable)
@@ -33,9 +34,18 @@ struct MailboxSidebar: View {
     }
 }
 
+extension MailboxSidebar {
+    /// Unread counts where they mean something to do: not the sent, the drafts, the trash, nor
+    /// « Tous les messages », which counts everything twice.
+    static func showsUnseen(_ mailbox: Mailbox) -> Bool {
+        ![.sent, .drafts, .trash, .all].contains(mailbox.role)
+    }
+}
+
 private struct MailboxRow: View {
     let mailbox: Mailbox
     let selected: Bool
+    let unseen: Int
     let action: () -> Void
     @State private var hovering = false
 
@@ -49,6 +59,11 @@ private struct MailboxRow: View {
                     .font(.system(size: 13, weight: mailbox.role == .other ? .regular : .medium))
                     .lineLimit(1)
                 Spacer(minLength: 0)
+                if unseen > 0 {
+                    Text(unseen, format: .number)
+                        .font(.system(size: 11, weight: .medium).monospacedDigit())
+                        .foregroundStyle(Theme.secondaryText)
+                }
             }
             .foregroundStyle(selected ? Theme.accent : mailbox.role == .other ? Theme.secondaryText : Theme.primaryText)
             .padding(.leading, 10 + CGFloat(mailbox.role == .other ? mailbox.depth * 14 : 0))

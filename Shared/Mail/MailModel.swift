@@ -21,6 +21,8 @@ final class MailModel {
     private(set) var syncing = false
     /// The last thing that went wrong with the server, said plainly.
     var serverError: String?
+    /// Messages and unread messages of the current account's mailboxes, by path.
+    private(set) var counts: [String: IMAPClient.Count] = [:]
     /// Images from the Internet allowed for the open message.
     var showsRemoteImages = false
 
@@ -46,6 +48,7 @@ final class MailModel {
     }
 
     func select(_ account: MailAccount) {
+        if settings.currentAccount != account.id.uuidString { counts = [:] }
         settings.currentAccount = account.id.uuidString
         selectMailbox("INBOX")
     }
@@ -81,6 +84,14 @@ final class MailModel {
             serverError = Self.describe(error)
         }
         await reloadList()
+        await refreshCounts(account)
+    }
+
+    /// The counts of every mailbox of the account, after its open mailbox is up to date.
+    private func refreshCounts(_ account: MailAccount) async {
+        let paths = account.mailboxes.filter(\.isSelectable).map(\.path)
+        guard let counts = try? await session(for: account).counts(paths), currentAccount?.id == account.id else { return }
+        self.counts = counts
     }
 
     func reloadList() async {
@@ -146,7 +157,13 @@ final class MailModel {
     /// At once in the list and the cache, then on the server; put back if the server refuses.
     func setFlag(_ flag: String, on: Bool, for summary: MessageSummary) {
         if let index = messages.firstIndex(where: { $0.id == summary.id }) {
+            let had = messages[index].flags.contains(flag)
             if on { messages[index].flags.insert(flag) } else { messages[index].flags.remove(flag) }
+            // The unread count follows at once, before the next STATUS.
+            if flag == "\\Seen", had != on, var count = counts[summary.mailbox] {
+                count.unseen = max(0, count.unseen + (on ? -1 : 1))
+                counts[summary.mailbox] = count
+            }
         }
         Task {
             await cache.setFlag(flag, on: on, message: summary.id)
@@ -201,6 +218,8 @@ final class MailModel {
             }
         }
         await reloadList()
+        counts = ["INBOX": .init(messages: 1_284, unseen: 2), "Archive": .init(messages: 3_410, unseen: 0), "Junk": .init(messages: 14, unseen: 3),
+                  "Factures": .init(messages: 52, unseen: 1)]
         // `-openUID 103`: that message open.
         let uid = UserDefaults.standard.integer(forKey: "openUID")
         if let message = messages.first(where: { $0.uid == uid }) { open(message) }

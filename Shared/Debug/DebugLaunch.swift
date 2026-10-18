@@ -14,7 +14,7 @@ enum DebugLaunch {
     static var demoAccounts: [MailAccount] {
         guard isDemo else { return [] }
         var personal = MailAccount(name: "Steven", address: "steven@icloud.com", preset: ProviderDirectory.preset(for: "steven@icloud.com"))
-        personal.mailboxes = ["INBOX", "Archive", "Sent Messages", "Drafts", "Deleted Messages", "Junk", "Factures", "Voyages", "Voyages/Portugal"]
+        personal.mailboxes = ["INBOX", "Archive", "Sent Messages", "Drafts", "Deleted Messages", "Junk", "All Mail", "Factures", "Voyages", "Voyages/Portugal"]
             .map { Mailbox(path: $0, delimiter: "/", attributes: Mailbox.guessedAttributes(for: $0)) }
         var work = MailAccount(name: "Studio", address: "hello@studio.test", preset: ProviderDirectory.preset(for: "hello@studio.test"))
         work.mailboxes = ["INBOX", "Archives", "Sent", "Drafts", "Trash"]

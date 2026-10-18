@@ -54,7 +54,7 @@ struct Mailbox: Codable, Hashable, Identifiable {
     var id: String { path }
 
     enum Role: Int, Codable, CaseIterable, Comparable {
-        case inbox, archive, sent, drafts, junk, trash, other
+        case inbox, archive, sent, drafts, junk, trash, all, other
 
         static func < (a: Role, b: Role) -> Bool { a.rawValue < b.rawValue }
 
@@ -66,6 +66,7 @@ struct Mailbox: Codable, Hashable, Identifiable {
             case .drafts: "Brouillons"
             case .junk: "Indésirables"
             case .trash: "Corbeille"
+            case .all: "Tous les messages"
             case .other: ""
             }
         }
@@ -78,6 +79,7 @@ struct Mailbox: Codable, Hashable, Identifiable {
             case .drafts: "doc"
             case .junk: "xmark.bin"
             case .trash: "trash"
+            case .all: "tray.full"
             case .other: "folder"
             }
         }
@@ -86,7 +88,9 @@ struct Mailbox: Codable, Hashable, Identifiable {
     var role: Role {
         if path.uppercased() == "INBOX" { return .inbox }
         let lowered = Set(attributes.map { $0.lowercased() })
-        if lowered.contains("\\archive") || lowered.contains("\\all") { return .archive }
+        if lowered.contains("\\archive") { return .archive }
+        // Every message of the account (Gmail's and Proton's « All Mail »): not the archive.
+        if lowered.contains("\\all") { return .all }
         if lowered.contains("\\sent") { return .sent }
         if lowered.contains("\\drafts") { return .drafts }
         if lowered.contains("\\junk") { return .junk }
@@ -111,12 +115,18 @@ struct Mailbox: Codable, Hashable, Identifiable {
         return path.components(separatedBy: delimiter).count - 1
     }
 
-    var displayName: String { role == .other ? name : role.label }
+    var displayName: String {
+        guard role == .other else { return role.label }
+        // Proton Mail Bridge puts folders and labels under two parents of its own, in English.
+        if depth == 0 { return ["folders": "Dossiers", "labels": "Libellés"][path.lowercased()] ?? name }
+        return name
+    }
 
     /// Servers without SPECIAL-USE (older hosts): the role guessed from the usual names.
     static func guessedAttributes(for path: String) -> Set<String> {
         switch path.lowercased() {
-        case "archive", "archives", "all mail", "[gmail]/all mail": ["\\Archive"]
+        case "archive", "archives": ["\\Archive"]
+        case "all mail", "[gmail]/all mail", "tous les messages": ["\\All"]
         case "sent", "sent messages", "sent items", "envoyés", "éléments envoyés", "[gmail]/sent mail": ["\\Sent"]
         case "drafts", "brouillons", "[gmail]/drafts": ["\\Drafts"]
         case "junk", "spam", "junk e-mail", "courrier indésirable", "[gmail]/spam": ["\\Junk"]
