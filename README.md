@@ -142,7 +142,8 @@ Un geste par message, au clavier dans la liste, par les boutons au bout de la li
 - 🟡 IDLE : écrit, pas encore observé sur un vrai compte
 - ✅ Écrire : message composé puis relu par le décodeur (objet accentué, destinataires, Cci absent des en-têtes, Markdown, HTML, pièce jointe au nom accentué, CRLF), quoted-printable, réponse (destinataires, « Re: », fil, citation), répondre à tous, transfert, adresses vérifiées, `mailto:`
 - ☑️ Fenêtre d'écriture, actions au survol (captures en démonstration)
-- 🟡 **Envoi réel (SMTP), copie dans Envoyés, brouillon rangé** : écrits, jamais exécutés contre un vrai serveur — à essayer sur le compte Proton
+- ☑️ **Envoi réel (SMTP)** : vérifié à la main avec le compte Proton (via Bridge), le 18 oct. 2026
+- 🟡 Brouillon rangé à la fermeture, copie dans Envoyés chez les hébergeurs qui ne la font pas eux-mêmes : pas encore vérifiés sur un vrai compte
 - ❌ Messages plus anciens que les 300 derniers, lecture épurée, gestes sur plusieurs messages à la fois, rouvrir un brouillon de Brouillons pour le continuer, signature
 - ❌ Ponts avec Void et Void Notes (« Envoyer vers Void Notes », « Envoyer la page par mail »)
 - ❌ iPhone
